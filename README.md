@@ -4,10 +4,16 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-0.1.2-green.svg)](.claude-plugin/plugin.json)
 
-**Turn any YouTube video or playlist into clean Markdown transcripts — then translate them into any language.**
+**Run Transcription and Translation for Youtube or playlist into clean Markdown transcripts.**
 
-Like a ribosome reads a transcript and synthesizes a product, this plugin goes
 **transcription → translation**: pull the spoken words out of a video, then localize them.
+
+Video is great, but for learning/information purposes, it's too less dense.
+In the world where there's just so much information out there, you might want to optimize 
+your information ingestion time, and automated transcription --> translation pipeline help you
+get any youtube knowledge out there efficiently.
+
+Embedding image coming up for next version.
 
 ```
 YouTube URL ──▶ transcribe ──▶ Markdown (original language) ──▶ translate ──▶ Markdown (your language)
