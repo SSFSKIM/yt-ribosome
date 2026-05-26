@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+_smoketest/
+transcripts/
+transcripts-*/
+.env

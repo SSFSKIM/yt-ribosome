@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "yt-ribosome",
+  "description": "Single-plugin marketplace for yt-ribosome: YouTube transcription and translation skills for Claude Code.",
+  "owner": {
+    "name": "SSFSKIM",
+    "url": "https://github.com/SSFSKIM"
+  },
+  "plugins": [
+    {
+      "name": "yt-ribosome",
+      "source": "./",
+      "description": "Transcribe YouTube videos/playlists into Markdown (yt-dlp captions with OpenAI gpt-4o-transcribe/whisper fallback), then translate transcripts into any language via OpenAI or Gemini.",
+      "version": "0.1.0",
+      "author": {
+        "name": "supremekim17",
+        "email": "supremekim17@gmail.com"
+      },
+      "homepage": "https://github.com/SSFSKIM/yt-ribosome",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["youtube", "transcription", "translation", "yt-dlp", "gpt-4o-transcribe", "whisper", "gemini", "subtitles"]
+    }
+  ]
+}
