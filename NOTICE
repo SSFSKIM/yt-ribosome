@@ -1,0 +1,8 @@
+yt-ribosome
+Copyright 2026 SSFSKIM
+
+This product is licensed under the Apache License, Version 2.0.
+
+It orchestrates external tools and services that are NOT bundled and remain
+under their own licenses, including: yt-dlp, ffmpeg, the OpenAI API/SDK, and
+the Google Gemini API / google-genai SDK.
