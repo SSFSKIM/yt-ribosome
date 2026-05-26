@@ -11,7 +11,7 @@
       "name": "yt-ribosome",
       "source": "./",
       "description": "Transcribe YouTube videos/playlists into Markdown (yt-dlp captions with OpenAI gpt-4o-transcribe/whisper fallback), then translate transcripts into any language via OpenAI or Gemini.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "supremekim17",
         "email": "supremekim17@gmail.com"

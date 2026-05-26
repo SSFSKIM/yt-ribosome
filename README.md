@@ -69,6 +69,7 @@ claude --plugin-dir /path/to/yt-ribosome
 ## Defaults
 
 - Transcription fallback model: `gpt-4o-transcribe` (more accurate than `whisper-1`).
-- Translation provider: `openai` (`gpt-4o`); switch with `--provider gemini` (`gemini-3.5-flash`).
+- Translation provider: `openai` (`gpt-5.4-2026-03-05`, reasoning effort `high`); switch with
+  `--provider gemini` (`gemini-3.5-flash`), or `--model` / `--openai-effort` to tune.
 
 See each skill's `references/usage.md` for the full option list.

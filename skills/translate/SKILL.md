@@ -1,6 +1,6 @@
 ---
 name: translate
-version: 0.1.0
+version: 0.1.1
 description: This skill should be used when the user asks to "translate this transcript", "translate these markdown files to Korean/Japanese/English", "트랜스크립트 번역해줘", "이 문서들 한국어로 번역", "한국어로 번역해줘", or wants transcript/Markdown text localized into another language. Operates on existing files (a file or directory) and does NOT download from YouTube — to fetch a video first, use transcribe or transcribe-and-translate. Uses OpenAI (default) or Gemini, preserves Markdown structure and URLs, corrects auto-transcription errors, runs files in parallel, and skips files already written in the target writing-script.
 argument-hint: <file-or-dir> --to <language> [--provider openai|gemini] [--model M] [--out-dir DIR]
 allowed-tools: Bash, Read, Write, Edit
@@ -31,7 +31,8 @@ The script:
 
 ## Providers
 
-- **openai (default)** — `chat.completions`, default model `gpt-4o`. Needs `OPENAI_API_KEY`.
+- **openai (default)** — `chat.completions`, default model `gpt-5.4-2026-03-05` with
+  `reasoning_effort=high` (set `--openai-effort`). Needs `OPENAI_API_KEY`.
 - **gemini** — `google-genai`, default model `gemini-3.5-flash`. Needs `GEMINI_API_KEY` or
   `GOOGLE_API_KEY`. Auto-detects a Vertex AI Express key (`AQ.` prefix) vs a standard key.
 
@@ -44,9 +45,10 @@ Select with `--provider`; override the model with `--model`.
 2. **Determine the target language** from the user (`--to "Korean"`, `--to ja`, etc.).
 3. **Choose output**: directory input defaults to `<input>-<lang>/`; a single file defaults to
    `name.<lang>.ext`. Override with `--out-dir`.
-4. **Run the script**. Tune `--workers` (default 8) for parallelism, `--gemini-thinking`
-   (default `low`; raise to `medium`/`high` for harder material), `--no-skip-detect` to force
-   translating files already in the target language.
+4. **Run the script**. Tune `--workers` (default 8) for parallelism, `--openai-effort`
+   (default `high`; reasoning effort for OpenAI reasoning models), `--gemini-thinking`
+   (default `low`; raise for harder material), `--no-skip-detect` to force translating files
+   already in the target language.
 5. **Report** the per-file results (translated vs copied, char counts, failures) and output path.
 
 ## Notes

@@ -8,7 +8,9 @@ translated. The translator is told the source is an auto-generated transcript so
 it silently corrects obvious speech-to-text errors (e.g. "Cloud" -> Claude).
 
 Providers:
-  - openai (default): chat.completions, default model gpt-4o
+  - openai (default): chat.completions, default model gpt-5.4-2026-03-05 with
+    reasoning_effort=high (reasoning models drop custom temperature and use
+    max_completion_tokens); override with --model / --openai-effort
   - gemini: google-genai, default model gemini-3.5-flash; auto-detects a Vertex
     AI Express key ("AQ." prefix) vs a standard Gemini API key
 
@@ -119,18 +121,27 @@ def split_half(text):
 # --------------------------------------------------------------------------- #
 # providers
 # --------------------------------------------------------------------------- #
+REASONING_RE = re.compile(r"^(gpt-5|o[1-4])", re.I)   # reasoning models: gpt-5.x, o1/o3/o4
+
+
 class OpenAIProvider:
-    def __init__(self, model):
+    def __init__(self, model, effort):
         from openai import OpenAI
         self.client = OpenAI()
-        self.model = model or "gpt-4o"
+        self.model = model or "gpt-5.4-2026-03-05"
+        self.effort = effort
+        self.reasoning = bool(REASONING_RE.match(self.model))
 
     def run(self, text, system):
-        r = self.client.chat.completions.create(
-            model=self.model, temperature=0.3, max_tokens=16384,
-            messages=[{"role": "system", "content": system},
-                      {"role": "user", "content": text}],
-        )
+        msgs = [{"role": "system", "content": system},
+                {"role": "user", "content": text}]
+        if self.reasoning:
+            # reasoning models: use reasoning_effort + max_completion_tokens (reasoning
+            # tokens count toward it, so keep it generous); custom temperature is rejected.
+            kw = dict(reasoning_effort=self.effort, max_completion_tokens=32000)
+        else:
+            kw = dict(temperature=0.3, max_tokens=16384)
+        r = self.client.chat.completions.create(model=self.model, messages=msgs, **kw)
         ch = r.choices[0]
         return ch.message.content, (ch.finish_reason == "length")
 
@@ -200,8 +211,11 @@ def main():
     ap.add_argument("input", help="a file or a directory of .md/.txt files")
     ap.add_argument("--to", required=True, help='target language, e.g. "Korean", "ko", "日本語"')
     ap.add_argument("--provider", default="openai", choices=["openai", "gemini"])
-    ap.add_argument("--model", default=None, help="override model (default: gpt-4o / gemini-3.5-flash)")
+    ap.add_argument("--model", default=None,
+                    help="override model (default: gpt-5.4-2026-03-05 / gemini-3.5-flash)")
     ap.add_argument("--out-dir", default=None, help="output dir (default: <input>-<lang>)")
+    ap.add_argument("--openai-effort", default="high", choices=["minimal", "low", "medium", "high"],
+                    help="reasoning effort for OpenAI reasoning models (default: high)")
     ap.add_argument("--gemini-thinking", default="low", choices=["minimal", "low", "medium", "high"],
                     help="Gemini 3.x thinking level (default: low)")
     ap.add_argument("--no-skip-detect", action="store_true",
@@ -212,7 +226,7 @@ def main():
 
     load_env()
     if args.provider == "openai":
-        provider = OpenAIProvider(args.model)
+        provider = OpenAIProvider(args.model, args.openai_effort)
     else:
         provider = GeminiProvider(args.model, args.gemini_thinking)
 
