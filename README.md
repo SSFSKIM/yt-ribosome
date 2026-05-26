@@ -1,8 +1,8 @@
 # 🧬 yt-ribosome
 
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2.svg)](https://code.claude.com/docs/en/plugins)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.2-green.svg)](.claude-plugin/plugin.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.1.3-green.svg)](.claude-plugin/plugin.json)
 
 **Run Transcription and Translation for Youtube or playlist into clean Markdown transcripts.**
 
@@ -167,8 +167,8 @@ Full reference: [`skills/transcribe/references/usage.md`](skills/transcribe/refe
 
 ## License
 
-[Apache-2.0](LICENSE) — includes an explicit patent grant. See [`NOTICE`](NOTICE) for attribution.
+[MIT](LICENSE).
 
-Bundled nothing third-party; `yt-ribosome` orchestrates external tools that keep their own
+Nothing third-party is bundled; `yt-ribosome` orchestrates external tools that keep their own
 licenses: [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://ffmpeg.org), the
 [OpenAI API](https://platform.openai.com), and the [Google Gemini API](https://ai.google.dev).

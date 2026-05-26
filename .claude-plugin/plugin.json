@@ -1,6 +1,6 @@
 {
   "name": "yt-ribosome",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Transcribe YouTube videos/playlists (yt-dlp captions with OpenAI gpt-4o-transcribe/whisper fallback) into Markdown, then translate transcripts into any language via OpenAI or Gemini.",
   "author": {
     "name": "supremekim17",
@@ -8,6 +8,6 @@
   },
   "homepage": "https://github.com/SSFSKIM/yt-ribosome",
   "repository": "https://github.com/SSFSKIM/yt-ribosome",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "keywords": ["youtube", "transcription", "translation", "yt-dlp", "whisper", "gpt-4o-transcribe", "gemini"]
 }
