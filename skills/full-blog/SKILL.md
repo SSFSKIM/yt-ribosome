@@ -1,8 +1,8 @@
 ---
 name: full-blog
-version: 0.2.0
-description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts scene-cut frames with ffmpeg, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
-argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--scene-threshold X] [--workers N] [--max-cost-usd N] [--no-resume] [--force]
+version: 0.2.1
+description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts frames by uniform sampling, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
+argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--sample-interval N] [--workers N] [--max-cost-usd N] [--no-resume] [--force]
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -23,16 +23,20 @@ python3 "${CLAUDE_PLUGIN_ROOT}/skills/full-blog/scripts/full_blog.py" "<URL>" [o
 
 Per video, the script:
 
-1. Calls the existing `transcribe.py` to produce `.md` + `.srt`.
+1. Calls the existing `transcribe.py` to produce `.md` + sentence-level `.srt`.
 2. Downloads the video with `yt-dlp` to a temp dir.
-3. Samples 60 s of the video to pick an adaptive scene-cut threshold (0.20 for
-   slide-heavy talks, 0.30 for mixed, 0.50 for vlogs).
-4. Runs `ffmpeg scene-cut` to extract candidate frames.
-5. Deduplicates near-identical frames with imagehash phash (Hamming ≤ 5).
-6. Batches the survivors to Gemini Flash with the matching transcript window;
-   Gemini decides which frames are informative and writes alt-text + caption.
-7. Aligns each kept frame to the right markdown paragraph (token overlap of
-   accumulated srt cues) and emits HTML with `<figure>` blocks.
+3. Samples one frame every `--sample-interval` seconds (default 5) with ffmpeg.
+   Uniform sampling (vs. scene-cut) is intentional: pixel-based scene detection
+   misses slide transitions on lecture/code content where the template stays
+   the same and only text changes.
+4. Deduplicates near-identical frames with imagehash phash (Hamming ≤ 5).
+   Held slides collapse into a single representative.
+5. Batches the survivors to Gemini Flash with the matching transcript window;
+   Gemini filters talking-head / duplicate / low-value frames and writes
+   alt-text + caption for the keepers.
+6. Aligns each kept frame to the right markdown paragraph (token overlap of
+   sentence-level srt cues) and emits HTML with `<figure>` blocks. Adjacent
+   figures inside the same paragraph are grouped into a `.figure-row` gallery.
 
 Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with
 `gemini-2.0-flash`.
@@ -47,7 +51,9 @@ Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with
    - `--ranker-model` — `gemini-2.5-flash` (default) or `gemini-2.0-flash` (3×
      cheaper).
    - `--max-frames-per-video N` — final cap (default 25).
-   - `--scene-threshold X` — override adaptive (e.g. `0.4`).
+   - `--sample-interval N` — seconds between uniform samples (default 5).
+     Lower = denser coverage + more Gemini cost; raise to 10 for long lectures
+     where you don't need slide-by-slide capture.
    - `--workers N` — parallel videos (default 2; Gemini RPM-aware).
    - `--max-cost-usd N` — soft ceiling on estimated total Gemini spend (default 1.00).
    - `--no-resume` — don't reuse cached /tmp dirs from earlier runs (default off, i.e. reuse enabled).
@@ -127,7 +133,7 @@ The CSS classes the template understands:
 ## Resources
 
 - **`scripts/full_blog.py`** — orchestrator (run this; don't reimplement).
-- **`scripts/frame_extract.py`** — ffmpeg scene-cut + adaptive threshold + phash.
+- **`scripts/frame_extract.py`** — uniform ffmpeg sampling + phash dedup.
 - **`scripts/frame_rank.py`** — Gemini batched ranker.
 - **`scripts/render_html.py`** — srt-paragraph alignment + HTML template.
 - **`references/usage.md`** — options, prerequisites, troubleshooting.
