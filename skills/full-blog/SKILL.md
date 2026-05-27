@@ -1,6 +1,6 @@
 ---
 name: full-blog
-version: 0.1.0
+version: 0.2.0
 description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts scene-cut frames with ffmpeg, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
 argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--scene-threshold X] [--workers N] [--max-cost-usd N] [--no-resume] [--force]
 allowed-tools: Bash, Read, Write, Edit
@@ -53,8 +53,64 @@ Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with
    - `--no-resume` — don't reuse cached /tmp dirs from earlier runs (default off, i.e. reuse enabled).
    - `--force` — overwrite existing `.html`.
 3. **Run the script** with the URL and options.
-4. **Report** the per-video summary the script prints. The machine-readable
+4. **Restructure each HTML for readability** (see "Restructure for readability"
+   below). The script produces a *scaffold* — flat paragraphs in a styled
+   template. You turn that scaffold into a real blog post by adding `<h2>`
+   section headings, a lead paragraph, and dividers.
+5. **Report** the per-video summary the script prints. The machine-readable
    `_run_summary.json` is written to the output directory.
+
+## Restructure for readability
+
+The script renders paragraphs flat — one `<p data-srt-start="N">` per
+transcript paragraph, with figures spliced in between. That's deliberate:
+deciding the *structure* of a blog (topic boundaries, lead, hierarchy) is an
+editorial judgement that belongs to you, not to the renderer.
+
+For each `.html` the script produced, use **Read** + **Edit** to:
+
+1. **Read the file** and skim the paragraphs. The `data-srt-start` attribute
+   on each `<p>` gives you the second mark in the source video, so you can
+   group paragraphs by time + topic.
+2. **Promote a lead paragraph.** Take the first 1–3 sentences that frame the
+   video's premise and wrap them as `<p class="lead">…</p>` (drop cap is
+   automatic). If the first transcript paragraph is throat-clearing
+   ("안녕하세요 여러분, 오늘은…"), tighten it into a 1–2 sentence hook.
+3. **Insert `<h2>` section headings** at natural topic boundaries — usually
+   3–6 sections for a typical talk. Headings should be short (2–6 words) and
+   substantive (`API의 본질`, `실생활 비유`, `왜 표준이 중요한가`), not
+   sequential ("Part 1, Part 2"). Use the speaker's words where possible.
+4. **Split monolithic paragraphs.** Transcript paragraphs are often 5–10
+   sentences glued together; break them at clear conversational pivots so
+   each `<p>` stays ~2–4 sentences. Preserve `data-srt-start` on the *first*
+   piece of a split paragraph; omit it on the continuation pieces.
+5. **Add `<hr class="divider">`** between major sections only when the topic
+   really shifts (a triple-dot ornament; don't overuse).
+6. **Empty the "Additional frames" tail.** Move each `<figure>` in
+   `<section class="tail-section">` into the body section that matches its
+   `data-timestamp`, then delete the empty tail `<section>`. (If a figure
+   truly doesn't belong anywhere, leaving it in the tail is fine — but try
+   first.)
+7. **Polish the H1 if needed.** The default `<h1 class="post-title">` is the
+   raw YouTube title (often padded with prefixes like `01.` or channel
+   noise). Rewrite it as a clean editorial title if it reads poorly.
+
+**Do not:**
+- Rewrite the *meaning* of paragraphs. This is a transcript-faithful blog,
+  not a summary. Tighten phrasing only where the transcript is obviously
+  speech-disfluent.
+- Move, rename, or alter `<figure>` elements other than their position in
+  the document. The `src`, `alt`, `caption`, `data-timestamp`, and deep-link
+  href are correct as-emitted.
+- Touch the CSS, `<head>`, or page chrome. Only edit inside
+  `<div class="post-body">`.
+- Translate. If a translation is needed, finish restructuring first, then
+  run the `translate` skill on the result (it preserves the structure).
+
+The CSS classes the template understands:
+`p.lead` (drop-cap lead), `h2` / `h3` (sectioning), `blockquote`
+(pull-quotes for memorable lines), `hr.divider` (triple-dot ornament),
+`ul`/`ol` (lists), inline `<code>` for technical terms.
 
 ## Notes
 
