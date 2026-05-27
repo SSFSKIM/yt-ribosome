@@ -90,11 +90,19 @@ def _parse_response(raw, expected_len):
     return data
 
 
-def _call_gemini(model, prompt, image_paths, api_key=None):
+def _call_gemini(model, prompt, image_paths, api_key=None, timeout_s=60):
     """Real Gemini call — separated so tests can mock it.
 
     Detects Vertex AI Express keys (prefix "AQ.") and routes them through the
     Vertex client; standard Gemini API keys ("AIza...") use the default client.
+
+    The call is wrapped in a thread-based timeout because the google-genai
+    SDK doesn't enforce a default request timeout — when Google's server
+    holds the TCP connection open without responding, the SDK call blocks
+    forever. Live test caught this: a subagent's pipeline hung for 5+ hours
+    on a Gemini batch with file descriptor stuck in TCP ESTABLISHED state
+    to 1e100.net. Threading is SDK-version-agnostic; the abandoned future
+    eventually loses its TCP socket and gets GC'd.
     """
     from google import genai
 
@@ -108,20 +116,33 @@ def _call_gemini(model, prompt, image_paths, api_key=None):
     for p in image_paths:
         with open(p, "rb") as f:
             parts.append(genai.types.Part.from_bytes(data=f.read(), mime_type="image/jpeg"))
-    resp = client.models.generate_content(
-        model=model,
-        contents=parts,
-        config={"response_mime_type": "application/json"},
-    )
+
+    import concurrent.futures as _cf
+    with _cf.ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(
+            client.models.generate_content,
+            model=model,
+            contents=parts,
+            config={"response_mime_type": "application/json"},
+        )
+        resp = fut.result(timeout=timeout_s)
     return _parse_response(resp.text, expected_len=len(image_paths))
 
 
 def _ranker_call_with_retries(model, prompt, image_paths, max_attempts=5,
                               base_delay=2.0, api_key=None):
+    import concurrent.futures as _cf
     last_err = None
     for attempt in range(max_attempts):
         try:
             return _call_gemini(model, prompt, image_paths, api_key=api_key)
+        except _cf.TimeoutError as e:
+            # Timeout means the API call is structurally hung, not transient
+            # (the SDK held a TCP socket open with no response). Retrying the
+            # same large batch is unlikely to help — bisect smaller and try
+            # again immediately.
+            last_err = e
+            break
         except Exception as e:
             last_err = e
             time.sleep(min(32.0, base_delay * (2 ** attempt)))
