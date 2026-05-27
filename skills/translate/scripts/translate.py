@@ -191,7 +191,205 @@ def translate_text(provider, text, system, depth=0):
 
 
 # --------------------------------------------------------------------------- #
+# HTML translation path (v0.2.0)
+# --------------------------------------------------------------------------- #
+
+_HTML_SKIP_TAGS = {"code", "pre", "script", "style"}
+_HTML_TEXT_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6",
+                   "figcaption", "title", "blockquote", "em", "strong", "a"}
+_STOCK_LINK_TEXTS = {"▶ Watch on YouTube"}
+
+
+def _extract_html_nodes(html_text):
+    """Return (soup, list[{id, kind, text}]) of translatable text in source order.
+
+    Skips <code>, <pre>, <script>, <style>. Walks <img alt> attributes too.
+    Elements are tagged with data-tr-id / data-tr-alt-id so write-back is exact.
+
+    Public API returns only the node list; soup is discarded by callers that
+    only need the list. _translate_html calls the internal helper directly.
+    """
+    try:
+        from bs4 import BeautifulSoup, NavigableString
+    except ImportError:
+        raise RuntimeError("beautifulsoup4 required for HTML translation: pip install beautifulsoup4")
+    soup = BeautifulSoup(html_text, "html.parser")
+    nodes = []
+    nid = 0
+
+    for el in soup.find_all(True):
+        if el.name in _HTML_SKIP_TAGS:
+            continue
+        if el.name in _HTML_TEXT_TAGS:
+            parts = []
+            for child in el.children:
+                if isinstance(child, NavigableString):
+                    parts.append(str(child))
+                else:
+                    if child.name in _HTML_SKIP_TAGS:
+                        parts.append("")
+            text = "".join(parts).strip()
+            if text and text not in _STOCK_LINK_TEXTS:
+                el["data-tr-id"] = str(nid)
+                nodes.append({"id": nid, "kind": el.name, "text": text})
+                nid += 1
+        if el.name == "img":
+            alt = el.get("alt", "").strip()
+            if alt and alt not in _STOCK_LINK_TEXTS:
+                el["data-tr-alt-id"] = str(nid)
+                nodes.append({"id": nid, "kind": "alt", "text": alt})
+                nid += 1
+    return nodes
+
+
+def _build_translate_prompt(nodes, target):
+    import json as _j
+    schema_example = (
+        '[{"id": 0, "kind": "p", "text": "..."}, '
+        '{"id": 1, "kind": "alt", "text": "..."}]'
+    )
+    return f"""Translate each `text` field below to {target}. Preserve `id` and `kind` exactly.
+Return STRICT JSON array of the same length and same `id` order.
+
+Rules:
+- Conversational, natural {target}. Match the speaker's register.
+- Preserve proper nouns (Claude, Anthropic, OpenAI, MCP) as-is.
+- Preserve numbers and timestamp patterns like "(03:12)".
+- `kind: "alt"`     → keep concise (≤60 words).
+- `kind: "caption"` → keep short (≤15 words).
+- Fix obvious ASR errors silently (e.g., "Cloud" → "Claude" in Anthropic context).
+- Output ONLY the JSON array — no markdown fences, no commentary.
+
+Schema example: {schema_example}
+
+INPUT:
+{_j.dumps(nodes, ensure_ascii=False)}
+"""
+
+
+def _call_html_batch(nodes_json, target, provider, model):
+    """Send a batch to the LLM; return list of translated nodes (same id set).
+    Separated so tests can mock it.
+    """
+    import json as _j
+    nodes = _j.loads(nodes_json)
+    prompt = _build_translate_prompt(nodes, target)
+
+    if provider == "openai":
+        from openai import OpenAI
+        client = OpenAI()
+        resp = client.chat.completions.create(
+            model=model or "gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"},
+        )
+        text = resp.choices[0].message.content
+        data = _j.loads(text)
+        if isinstance(data, dict) and "items" in data:
+            data = data["items"]
+        if isinstance(data, dict) and "translations" in data:
+            data = data["translations"]
+    else:
+        from google import genai
+        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        resp = client.models.generate_content(
+            model=model or "gemini-2.5-flash",
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+        data = _j.loads(resp.text)
+        if isinstance(data, dict) and "items" in data:
+            data = data["items"]
+
+    if not isinstance(data, list):
+        raise RuntimeError(f"translator returned non-array: {type(data).__name__}")
+    if len(data) != len(nodes):
+        raise RuntimeError(f"length mismatch: {len(data)} vs {len(nodes)}")
+    return data
+
+
+def _translate_html(html_text, target, provider="openai", model=None,
+                    batch_size=120):
+    """Translate text nodes in HTML, preserving all attributes, hrefs, srcs."""
+    import json as _j
+    try:
+        from bs4 import BeautifulSoup, NavigableString
+    except ImportError:
+        raise RuntimeError("beautifulsoup4 required: pip install beautifulsoup4")
+
+    # Re-parse to get a soup with data-tr-id / data-tr-alt-id annotations.
+    # We call the internals of _extract_html_nodes directly on a fresh soup
+    # so we get back the annotated soup alongside the node list.
+    soup = BeautifulSoup(html_text, "html.parser")
+    nodes = []
+    nid = 0
+    for el in soup.find_all(True):
+        if el.name in _HTML_SKIP_TAGS:
+            continue
+        if el.name in _HTML_TEXT_TAGS:
+            parts = []
+            for child in el.children:
+                if isinstance(child, NavigableString):
+                    parts.append(str(child))
+                else:
+                    if child.name in _HTML_SKIP_TAGS:
+                        parts.append("")
+            text = "".join(parts).strip()
+            if text and text not in _STOCK_LINK_TEXTS:
+                el["data-tr-id"] = str(nid)
+                nodes.append({"id": nid, "kind": el.name, "text": text})
+                nid += 1
+        if el.name == "img":
+            alt = el.get("alt", "").strip()
+            if alt and alt not in _STOCK_LINK_TEXTS:
+                el["data-tr-alt-id"] = str(nid)
+                nodes.append({"id": nid, "kind": "alt", "text": alt})
+                nid += 1
+
+    if not nodes:
+        return html_text
+
+    # Translate in batches
+    translated_all = {}
+    for i in range(0, len(nodes), batch_size):
+        batch = nodes[i:i + batch_size]
+        items = _call_html_batch(_j.dumps(batch, ensure_ascii=False),
+                                 target, provider, model)
+        for it in items:
+            translated_all[it["id"]] = it["text"]
+
+    # Write translations back using the stable data-tr-id markers
+    for el in soup.find_all(True, attrs={"data-tr-id": True}):
+        node_id = int(el["data-tr-id"])
+        del el["data-tr-id"]
+        if node_id not in translated_all:
+            continue
+        new_text = translated_all[node_id]
+        # Replace direct NavigableString children with translated text
+        str_children = [c for c in list(el.children) if isinstance(c, NavigableString) and str(c).strip()]
+        if str_children:
+            str_children[0].replace_with(NavigableString(new_text))
+            for extra in str_children[1:]:
+                extra.replace_with(NavigableString(""))
+
+    for el in soup.find_all("img", attrs={"data-tr-alt-id": True}):
+        node_id = int(el["data-tr-alt-id"])
+        del el["data-tr-alt-id"]
+        if node_id in translated_all:
+            el["alt"] = translated_all[node_id]
+
+    return str(soup)
+
+
+# --------------------------------------------------------------------------- #
 def translate_file(provider, src, dst, target, skip_detect):
+    if src.lower().endswith(".html"):
+        with open(src, encoding="utf-8") as f:
+            html_text = f.read()
+        out = _translate_html(html_text, target, provider=provider.provider if hasattr(provider, "provider") else ("gemini" if isinstance(provider, GeminiProvider) else "openai"), model=None)
+        with open(dst, "w", encoding="utf-8") as f:
+            f.write(out)
+        return f"translated {os.path.basename(src)} -> {os.path.basename(dst)}"
     text = open(src, encoding="utf-8").read()
     if skip_detect and already_target(text, target):
         open(dst, "w", encoding="utf-8").write(text if text.endswith("\n") else text + "\n")
@@ -233,7 +431,8 @@ def main():
     # resolve inputs + output paths
     if os.path.isdir(args.input):
         files = sorted(glob.glob(os.path.join(args.input, "*.md")) +
-                       glob.glob(os.path.join(args.input, "*.txt")))
+                       glob.glob(os.path.join(args.input, "*.txt")) +
+                       glob.glob(os.path.join(args.input, "*.html")))
         out_dir = args.out_dir or (args.input.rstrip("/\\") + "-" + slug(args.to))
         os.makedirs(out_dir, exist_ok=True)
         jobs = [(f, os.path.join(out_dir, os.path.basename(f))) for f in files]
@@ -248,7 +447,7 @@ def main():
         jobs = [(args.input, dst)]
 
     if not files:
-        sys.exit("No .md/.txt files found in input.")
+        sys.exit("No .md/.txt/.html files found in input.")
     jobs = [(s, d) for s, d in jobs if args.overwrite or not (os.path.exists(d) and os.path.getsize(d) > 0)]
     print(f"translating {len(jobs)} file(s) -> {args.to} via {args.provider}", flush=True)
 
