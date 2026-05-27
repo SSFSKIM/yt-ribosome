@@ -106,13 +106,20 @@ def extract_scene_cuts(video_path, threshold, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     pattern = os.path.join(output_dir, "raw_%05d.jpg")
     metafile = os.path.join(output_dir, "_pts.txt")
-    # scale=720:-1 keeps enough detail for ranker/alt-text without bloating disk
-    # (typical 60-min talk: 150 frames * ~50KB ≈ 7.5MB temp).
+    # Preserve source resolution up to 1920 px wide. Earlier `scale=720:-1`
+    # produced 720x405 (only 14% of a 1080p source) — fine for ranker
+    # discrimination, but visibly blurry in the rendered blog whenever a
+    # frame is shown as a full-width figure (~720 CSS px = ~1440 retina px,
+    # forcing 2× upscaling of the source). Capping at 1920 keeps text/UI
+    # in slides sharp on Retina displays while bounding file size
+    # (typical 1080p screenshot at -q:v 2 ≈ 200-400 KB). `min(1920,iw)`
+    # avoids upscaling sources that are already smaller.
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
         "-i", video_path,
         "-vf", (
-            f"select='gt(scene,{threshold})',scale=720:-1,"
+            f"select='gt(scene,{threshold})',"
+            f"scale='min(1920,iw)':-1,"
             f"metadata=print:file={metafile},showinfo"
         ),
         "-vsync", "vfr", "-q:v", "2", pattern,
