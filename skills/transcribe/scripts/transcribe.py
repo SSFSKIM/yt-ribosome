@@ -192,13 +192,19 @@ def write_srt(segments, path):
 # --------------------------------------------------------------------------- #
 def transcribe_audio(url, vid, model, language, tmp):
     audio = os.path.join(tmp, f"{vid}.mp3")
-    subprocess.run(
-        YDLP_BASE + ["-f", "bestaudio", "-x", "--audio-format", "mp3",
+    # Use "bestaudio/best" — fall back to muxed video when no audio-only stream
+    # is published (YouTube increasingly serves muxed mp4 only for some videos).
+    # `-x` will extract audio from whichever stream wins the format selector.
+    res = subprocess.run(
+        YDLP_BASE + ["-f", "bestaudio/best", "-x", "--audio-format", "mp3",
                      "--audio-quality", "5", "-o", os.path.join(tmp, f"{vid}.%(ext)s"), url],
         capture_output=True, text=True,
     )
     if not os.path.isfile(audio):
-        raise RuntimeError("audio download failed")
+        raise RuntimeError(
+            f"audio download failed (yt-dlp exit={res.returncode}): "
+            f"{res.stderr.strip()[-300:] or '(no stderr)'}"
+        )
     chunk_dir = os.path.join(tmp, "chunks")
     os.makedirs(chunk_dir, exist_ok=True)
     subprocess.run(
