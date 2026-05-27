@@ -586,15 +586,17 @@ Run a one-time helper from the project root:
 python3 -c "
 from PIL import Image, ImageDraw
 out = 'skills/full-blog/tests/fixtures'
-def slide(text, jitter=0):
-    img = Image.new('RGB', (400, 300), 'white')
+def slide(text, jitter=0, bg='white'):
+    img = Image.new('RGB', (400, 300), bg)
     d = ImageDraw.Draw(img)
     d.rectangle([20+jitter, 20, 380, 280], outline='black', width=3)
     d.text((40+jitter, 130), text, fill='black')
     return img
 slide('Slide A: intro').save(f'{out}/slide_a.jpg', quality=90)
 slide('Slide A: intro', jitter=2).save(f'{out}/slide_a_dup.jpg', quality=90)
-slide('Slide B: results').save(f'{out}/slide_b.jpg', quality=90)
+# slide_b uses a different bg color so its phash is >5 Hamming from slide_a.
+# Pure-text variation alone yields ~4 Hamming distance which is below max_distance.
+slide('Slide B: results', bg='black').save(f'{out}/slide_b.jpg', quality=90)
 print('wrote 3 fixtures')
 "
 ```
