@@ -386,7 +386,7 @@ def translate_file(provider, src, dst, target, skip_detect):
     if src.lower().endswith(".html"):
         with open(src, encoding="utf-8") as f:
             html_text = f.read()
-        out = _translate_html(html_text, target, provider=provider.provider if hasattr(provider, "provider") else ("gemini" if isinstance(provider, GeminiProvider) else "openai"), model=None)
+        out = _translate_html(html_text, target, provider="gemini" if isinstance(provider, GeminiProvider) else "openai", model=getattr(provider, "model", None))
         with open(dst, "w", encoding="utf-8") as f:
             f.write(out)
         return f"translated {os.path.basename(src)} -> {os.path.basename(dst)}"

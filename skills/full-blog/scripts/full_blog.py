@@ -153,12 +153,13 @@ def process_one(url, args):
     started = time.time()
     video_id = _video_id_from_url(url) or "unknown"
     fixed_temp = f"/tmp/yt-ribosome-blog-{video_id}"
-    if (not args.no_resume) and os.path.isdir(fixed_temp):
-        work_dir = fixed_temp
-        resumed = True
-    else:
+    if args.no_resume:
         work_dir = tempfile.mkdtemp(prefix=f"yt-ribosome-blog-{video_id}-")
         resumed = False
+    else:
+        resumed = os.path.isdir(fixed_temp) and os.listdir(fixed_temp)
+        os.makedirs(fixed_temp, exist_ok=True)
+        work_dir = fixed_temp
     try:
         md_path, srt_path, title = _run_transcribe(url, work_dir)
         safe = safe_name(title)
@@ -257,7 +258,8 @@ def main():
     ap.add_argument("--force", action="store_true",
                     help="Overwrite existing .html outputs")
     ap.add_argument("--max-cost-usd", type=float, default=1.00,
-                    help="Stop the run if estimated total Gemini cost exceeds this.")
+                    help="Print a warning when estimated total Gemini spend exceeds this "
+                         "(soft ceiling; does not auto-stop).")
     ap.add_argument("--no-resume", action="store_true",
                     help="Do not reuse existing /tmp/yt-ribosome-blog-* directories.")
     args = ap.parse_args()
