@@ -28,11 +28,9 @@ def _ensure_fixtures():
 def test_pipeline_end_to_end_with_mocked_ranker(tmp_path):
     _ensure_fixtures()
 
-    # 1. real ffmpeg scene-cut
-    th = fe.detect_threshold(SHORT_TALK_MP4)
-    assert th in (0.20, 0.30, 0.50)
+    # 1. real ffmpeg uniform sampling (every 10s)
     frames_dir = tmp_path / "frames"
-    pairs = fe.extract_scene_cuts(SHORT_TALK_MP4, th, str(frames_dir))
+    pairs = fe.extract_uniform_frames(SHORT_TALK_MP4, str(frames_dir), interval_s=10)
     assert len(pairs) >= 2
 
     # 2. real phash dedup

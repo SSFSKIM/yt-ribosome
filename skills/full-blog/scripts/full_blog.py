@@ -173,11 +173,10 @@ def process_one(url, args):
         video_path = os.path.join(work_dir, "video.mp4")
         if not (resumed and os.path.exists(video_path) and os.path.getsize(video_path) > 1_000_000):
             video_path = _download_video(url, work_dir)
-        threshold = (args.scene_threshold
-                     if args.scene_threshold is not None
-                     else fe.detect_threshold(video_path))
         frames_dir = os.path.join(work_dir, "frames")
-        pairs = fe.extract_scene_cuts(video_path, threshold, frames_dir)
+        pairs = fe.extract_uniform_frames(
+            video_path, frames_dir, interval_s=args.sample_interval,
+        )
         survivors = fe.dedup_by_phash(pairs)
         cues = rh.parse_srt(open(srt_path, encoding="utf-8").read())
         est_cost = _estimate_video_cost(len(survivors), args.ranker_model)
@@ -251,8 +250,9 @@ def main():
                     help="gemini-2.5-flash (default) or gemini-2.0-flash (cheaper)")
     ap.add_argument("--max-frames-per-video", type=int, default=25)
     ap.add_argument("--batch-size", type=int, default=10)
-    ap.add_argument("--scene-threshold", type=float, default=None,
-                    help="Override adaptive threshold (e.g. 0.3)")
+    ap.add_argument("--sample-interval", type=int, default=5,
+                    help="Seconds between uniform frame samples (default 5). "
+                         "Lower = denser coverage + more ranker cost.")
     ap.add_argument("--workers", type=int, default=2)
     ap.add_argument("--keep-temp", action="store_true")
     ap.add_argument("--force", action="store_true",

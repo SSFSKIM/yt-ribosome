@@ -1,6 +1,7 @@
 """Unit tests for frame_extract.py."""
 import os
 import sys
+
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -25,15 +26,6 @@ def test_phash_dedup_keeps_one_of_near_duplicates():
 
 def test_phash_dedup_handles_empty():
     assert fe.dedup_by_phash([]) == []
-
-
-def test_adaptive_threshold_buckets():
-    assert fe._threshold_for_cuts(0) == 0.20
-    assert fe._threshold_for_cuts(5) == 0.20
-    assert fe._threshold_for_cuts(6) == 0.30
-    assert fe._threshold_for_cuts(20) == 0.30
-    assert fe._threshold_for_cuts(21) == 0.50
-    assert fe._threshold_for_cuts(1000) == 0.50
 
 
 SHORT_TALK_MP4 = os.path.join(FIX, "short_talk.mp4")
@@ -76,33 +68,41 @@ def _ensure_fixture_mp4():
 
 
 @pytest.mark.integration
-def test_detect_threshold_real_video():
+def test_extract_uniform_frames_real_video(tmp_path):
+    """A 90s fixture sampled every 10s should yield ~9 frames at expected
+    timestamps (0, 10, 20, ...). The exact count tolerates ffmpeg ±1
+    rounding on the trailing frame."""
     _ensure_fixture_mp4()
-    th = fe.detect_threshold(SHORT_TALK_MP4)
-    assert th in (0.20, 0.30, 0.50)
-
-
-@pytest.mark.integration
-def test_extract_scene_cuts_real_video(tmp_path):
-    _ensure_fixture_mp4()
-    pairs = fe.extract_scene_cuts(SHORT_TALK_MP4, threshold=0.30, output_dir=str(tmp_path))
-    assert len(pairs) >= 2
-    for ts, path in pairs:
+    pairs = fe.extract_uniform_frames(SHORT_TALK_MP4, str(tmp_path), interval_s=10)
+    assert 8 <= len(pairs) <= 10, f"expected ~9 frames, got {len(pairs)}"
+    # Timestamps are deterministic: i * interval
+    for i, (ts, path) in enumerate(pairs):
+        assert ts == float(i * 10)
         assert os.path.exists(path)
-        assert ts >= 0
 
 
-def test_pts_time_regex_handles_colon_and_equals_formats():
-    """ffmpeg metadata=print writes 'pts_time:NNN.NNN' (colon) — make sure we parse it.
+def test_extract_uniform_frames_timestamps_are_deterministic(tmp_path, monkeypatch):
+    """Without spinning up ffmpeg: stub the subprocess call, drop fake raw
+    files in the output dir, and verify the rename/timestamp logic produces
+    the right sequence."""
+    import subprocess
+    called = {}
 
-    Regression test for the v0.2.0 bug where the regex used '=' separator and
-    silently fell back to using sequential indices as timestamps.
-    """
-    import re
-    pattern = re.compile(r"pts_time[:=]\s*([\d.]+)")
-    # Real ffmpeg `metadata=print` output (colon form):
-    assert pattern.search("frame:0    pts:4364800 pts_time:284.166667").group(1) == "284.166667"
-    # Tolerate equals form too (showinfo style):
-    assert pattern.search("lavfi.pts_time=12.5").group(1) == "12.5"
-    # No false matches:
-    assert pattern.search("lavfi.scene_score=0.45") is None
+    def fake_run(cmd, **kw):
+        called["cmd"] = cmd
+        # Simulate ffmpeg producing 3 frames
+        for i in range(1, 4):
+            with open(os.path.join(str(tmp_path), f"raw_{i:05d}.jpg"), "wb") as f:
+                f.write(b"\xff\xd8\xff\xe0")  # JPEG magic, content irrelevant
+        class R: returncode = 0
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    pairs = fe.extract_uniform_frames("ignored.mp4", str(tmp_path), interval_s=7)
+    assert [ts for ts, _ in pairs] == [0.0, 7.0, 14.0]
+    # File names use HH_MM_SS form
+    assert os.path.basename(pairs[0][1]) == "00_00_00.jpg"
+    assert os.path.basename(pairs[1][1]) == "00_00_07.jpg"
+    assert os.path.basename(pairs[2][1]) == "00_00_14.jpg"
+    # ffmpeg cmd uses fps=1/N filter
+    assert any("fps=1/7" in arg for arg in called["cmd"])
