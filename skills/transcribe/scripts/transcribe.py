@@ -207,22 +207,34 @@ def transcribe_audio(url, vid, model, language, tmp):
         )
     chunk_dir = os.path.join(tmp, "chunks")
     os.makedirs(chunk_dir, exist_ok=True)
+    # 60-second chunks let us synthesize SRT cues with chunk-level timestamps
+    # since gpt-4o-transcribe/gpt-4o-mini-transcribe do not expose per-segment
+    # times (only `json` and `text` formats). Whisper-1 supports `srt` natively
+    # but we keep a uniform chunk pipeline so quality/timestamps don't depend
+    # on the model choice.
+    chunk_seconds = 60
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
          "-ar", "16000", "-ac", "1", "-b:a", "48k",
-         "-f", "segment", "-segment_time", "600",
+         "-f", "segment", "-segment_time", str(chunk_seconds),
          os.path.join(chunk_dir, "c_%03d.mp3")],
         check=True,
     )
     from openai import OpenAI
     client = OpenAI()
-    parts = []
-    for chunk in sorted(glob.glob(os.path.join(chunk_dir, "c_*.mp3"))):
+    chunks = sorted(glob.glob(os.path.join(chunk_dir, "c_*.mp3")))
+    segments = []
+    for i, chunk in enumerate(chunks):
         kwargs = dict(model=model, response_format="text", file=open(chunk, "rb"))
         if language:
             kwargs["language"] = language
-        parts.append(client.audio.transcriptions.create(**kwargs).strip())
-    return " ".join(p for p in parts if p)
+        text = client.audio.transcriptions.create(**kwargs).strip()
+        if not text:
+            continue
+        start_ms = i * chunk_seconds * 1000
+        end_ms = (i + 1) * chunk_seconds * 1000
+        segments.append([start_ms, end_ms, text])
+    return segments
 
 
 # --------------------------------------------------------------------------- #
@@ -244,9 +256,11 @@ def process_video(idx, vid, title, args):
         elif args.no_audio_fallback:
             return f"NO MANUAL CAPTION, audio disabled: {idx:02d} {title[:50]}"
         else:
-            text = transcribe_audio(url, vid, args.fallback_model, args.audio_language, tmp)
+            segs = transcribe_audio(url, vid, args.fallback_model, args.audio_language, tmp)
             source = f"audio:{args.fallback_model}"
-            body = paragraphs([text])
+            if segs and not args.no_srt:
+                write_srt(segs, base + ".srt")
+            body = paragraphs([s[2] for s in segs])
     md = [f"# {idx:02d}. {title}", "", f"[YouTube]({url})", ""] + "\n\n".join(body).split("\n")
     open(base + ".md", "w", encoding="utf-8").write("\n".join(md).rstrip() + "\n")
     return f"done [{source}]: {idx:02d} {title[:50]} ({sum(len(b) for b in body)} chars)"
