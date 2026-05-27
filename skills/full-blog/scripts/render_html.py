@@ -457,35 +457,41 @@ figcaption .caption-text {{
   opacity: 0.7;
 }}
 
-/* ---------- Figure row (gallery) ---------- */
+/* ---------- Figure row (gallery, magazine breakout) ---------- */
 /* When several frames land in the same paragraph, stacking them vertically
-   wastes vertical space and makes the article feel padded with screenshots.
-   A grid row arranges 2–3 side-by-side; 4+ wrap. On mobile (<640px) the
-   grid collapses to 1 column so screenshots stay legible.
-   We override the per-figure breakout (negative margins) — instead the row
-   itself breaks out so the gallery looks deliberate, not glued together. */
+   wastes space. A grid arranges 2-3 side-by-side. Inside the 720px reading
+   column they'd squish to ~240 px each — unreadable for UI screenshots —
+   so the row breaks OUT of the article column into the viewport's wider
+   space (magazine "pull-out" pattern). The body keeps its narrow line
+   length for reading comfort; only the gallery uses the side whitespace.
+
+   The trick: position: relative + left: 50% + translateX(-50%) re-centers
+   the row on the article's centerline (which equals viewport center),
+   then `width: min(<row-max>, calc(100vw - gutter))` clamps it.
+
+   On mobile (<640 px) the grid collapses to 1 column. */
 .figure-row {{
   display: grid;
   gap: var(--space-md);
-  margin: var(--space-lg) 0;
+  margin: var(--space-lg) auto;
+  /* Centered breakout: article is centered in viewport, so re-positioning
+     on article's centerline puts the row on viewport's centerline too. */
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
 }}
 .figure-row > figure {{
   margin: 0;            /* row owns the spacing */
 }}
-@media (min-width: 760px) {{
-  .figure-row {{
-    margin-left: -32px;
-    margin-right: -32px;
-  }}
-  .figure-row > figure {{
-    margin-left: 0;
-    margin-right: 0;
-  }}
-}}
 .figure-row[data-count="2"] {{
+  /* 2-up: don't go too wide — each figure shouldn't dwarf body text */
+  width: min(960px, calc(100vw - 32px));
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }}
 .figure-row[data-count="3"] {{
+  /* 3-up: spill further into side margins so each cell is ~340 px on
+     a 1440 px viewport, vs ~240 px when constrained to the article. */
+  width: min(1100px, calc(100vw - 32px));
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }}
 /* Tighter caption typography inside galleries so 2–3 captions stay
@@ -503,6 +509,11 @@ figcaption .caption-text {{
   .figure-row,
   .figure-row[data-count="2"],
   .figure-row[data-count="3"] {{
+    width: auto;
+    left: auto;
+    transform: none;
+    margin-left: 0;
+    margin-right: 0;
     grid-template-columns: 1fr;
   }}
 }}
