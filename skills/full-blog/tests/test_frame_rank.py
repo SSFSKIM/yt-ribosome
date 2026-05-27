@@ -2,7 +2,7 @@
 import json
 import os
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 
@@ -76,3 +76,34 @@ def test_rank_frames_graceful_degrade_on_all_failures(mock_call):
     assert len(out) == 6
     assert all(o["include"] is True for o in out)
     assert all(o.get("degraded") for o in out)
+
+
+def test_ranker_cache_round_trip(tmp_path, monkeypatch):
+    """Cache hit on second call: _call_gemini should only be invoked once."""
+    cache_path = tmp_path / "cache.json"
+
+    class FakeHash:
+        def __init__(self, s): self.s = s
+        def __str__(self): return self.s
+        def __sub__(self, other): return 0
+
+    monkeypatch.setattr(fr, "imagehash", type("_", (), {"phash": lambda img: FakeHash("HASH-FAKE")}))
+    monkeypatch.setattr(fr, "Image", type("_", (), {"open": staticmethod(lambda p: p)}))
+
+    call_count = {"n": 0}
+    def fake_call(model, prompt, paths, api_key=None):
+        call_count["n"] += 1
+        return [{"frame_index": i, "include": True, "alt_text": "x",
+                 "caption": "y", "confidence": 0.5} for i in range(len(paths))]
+
+    with patch("frame_rank._call_gemini", side_effect=fake_call):
+        cues = [{"start": 0, "end": 30, "text": "hi"}]
+        pairs = [(1.0, "/tmp/a.jpg")]
+        out1 = fr.rank_frames(pairs, cues, model="fake", batch_size=10,
+                              cache_path=str(cache_path), allow_degrade=False)
+        out2 = fr.rank_frames(pairs, cues, model="fake", batch_size=10,
+                              cache_path=str(cache_path), allow_degrade=False)
+
+    assert len(out1) == 1
+    assert len(out2) == 1
+    assert call_count["n"] == 1   # second invocation used cache

@@ -2,7 +2,7 @@
 name: full-blog
 version: 0.1.0
 description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts scene-cut frames with ffmpeg, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
-argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--scene-threshold X] [--workers N] [--force]
+argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--scene-threshold X] [--workers N] [--max-cost-usd N] [--no-resume] [--force]
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -49,6 +49,8 @@ Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with
    - `--max-frames-per-video N` — final cap (default 25).
    - `--scene-threshold X` — override adaptive (e.g. `0.4`).
    - `--workers N` — parallel videos (default 2; Gemini RPM-aware).
+   - `--max-cost-usd N` — soft ceiling on estimated total Gemini spend (default 1.00).
+   - `--no-resume` — don't reuse cached /tmp dirs from earlier runs (default off, i.e. reuse enabled).
    - `--force` — overwrite existing `.html`.
 3. **Run the script** with the URL and options.
 4. **Report** the per-video summary the script prints. The machine-readable

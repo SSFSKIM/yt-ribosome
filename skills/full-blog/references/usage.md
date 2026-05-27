@@ -25,6 +25,8 @@ directory.
 | `--workers N` | `2` | Parallel videos |
 | `--keep-temp` | `false` | Keep `/tmp/yt-ribosome-blog-*/` for debugging |
 | `--force` | `false` | Overwrite existing `.html` |
+| `--max-cost-usd N` | `1.00` | Warns when estimated cumulative cost exceeds this (does not auto-stop) |
+| `--no-resume` | `false` | Skip re-using existing /tmp/yt-ribosome-blog-* directories |
 
 ## Output structure
 

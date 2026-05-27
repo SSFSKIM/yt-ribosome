@@ -3,21 +3,50 @@
 
 Public functions:
   - rank_frames(pairs, cues, model, batch_size, max_frames_final, allow_degrade,
-                api_key=None, _retry_base_delay=2.0) -> list of dicts
+                api_key=None, cache_path=None, _retry_base_delay=2.0) -> list of dicts
                 (timestamp_s, path, include, alt_text, caption, confidence, degraded?)
   - load_prompt_template() -> str
 
 Tests mock _call_gemini; in production it uses google-genai.
 """
+import imagehash
 import json
 import os
 import re
 import time
+from PIL import Image
 
 
 PROMPT_PATH = os.path.join(
     os.path.dirname(__file__), "..", "references", "ranker-prompt.md"
 )
+
+
+def _load_cache(cache_path):
+    if not cache_path or not os.path.exists(cache_path):
+        return {}
+    try:
+        return json.loads(open(cache_path, encoding="utf-8").read())
+    except Exception:
+        return {}
+
+
+def _save_cache(cache_path, cache):
+    if not cache_path:
+        return
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+def _phash_key(path):
+    """Return a stable string key for an image, used as ranker-cache key."""
+    try:
+        return str(imagehash.phash(Image.open(path)))
+    except Exception:
+        return path
 
 
 def load_prompt_template():
@@ -105,13 +134,15 @@ def _even_sample(items, n):
 
 def rank_frames(pairs, cues, model="gemini-2.5-flash", batch_size=10,
                 max_frames_final=25, allow_degrade=True, api_key=None,
-                _retry_base_delay=2.0):
+                cache_path=None, _retry_base_delay=2.0):
     """Rank frames with Gemini; return ordered results matching pairs.
 
-    pairs : list[(timestamp_s, path)]
-    cues  : list[{start, end, text}]
+    pairs      : list[(timestamp_s, path)]
+    cues       : list[{start, end, text}]
+    cache_path : optional path to JSON cache file; keyed by phash of frame image.
     """
     prompt_tmpl = load_prompt_template()
+    cache = _load_cache(cache_path)
     out = []
     degraded_run = False
     for batch in _batch(pairs, batch_size):
@@ -128,18 +159,39 @@ def rank_frames(pairs, cues, model="gemini-2.5-flash", batch_size=10,
                   .replace("{window_end}", _ts(win_end))
                   .replace("{transcript_window}",
                            _window_transcript(cues, win_start, win_end)))
-        try:
-            parsed = _ranker_call_with_retries(
-                model, prompt, paths, api_key=api_key,
-                base_delay=_retry_base_delay,
-            )
-        except Exception:
-            if not allow_degrade:
-                raise
+
+        # Split batch into cache hits and misses
+        keys = [_phash_key(p) for p in paths]
+        miss_indices = [i for i, k in enumerate(keys) if k not in cache]
+        miss_paths = [paths[i] for i in miss_indices]
+
+        if miss_paths:
+            try:
+                miss_results = _ranker_call_with_retries(
+                    model, prompt, miss_paths, api_key=api_key,
+                    base_delay=_retry_base_delay,
+                )
+                # Store new results in cache
+                for local_miss_i, item in enumerate(miss_results):
+                    cache[keys[miss_indices[local_miss_i]]] = item
+                _save_cache(cache_path, cache)
+            except Exception:
+                if not allow_degrade:
+                    raise
+                degraded_run = True
+                for local_miss_i in range(len(miss_paths)):
+                    cache[keys[miss_indices[local_miss_i]]] = {
+                        "frame_index": miss_indices[local_miss_i],
+                        "include": True, "alt_text": "",
+                        "caption": "", "confidence": 0.0,
+                        "_degraded": True,
+                    }
+
+        # Reconstruct parsed list for full batch using cache
+        parsed = [cache[k] for k in keys]
+        if any(p.get("_degraded") for p in parsed):
             degraded_run = True
-            parsed = [{"frame_index": i, "include": True, "alt_text": "",
-                       "caption": "", "confidence": 0.0}
-                      for i in range(len(batch))]
+
         for local_i, item in enumerate(parsed):
             ts, path = batch[local_i]
             out.append({

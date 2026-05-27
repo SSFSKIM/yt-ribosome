@@ -41,6 +41,19 @@ PLUGIN_ROOT = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.path.normpath(
 )
 TRANSCRIBE_PY = os.path.join(PLUGIN_ROOT, "skills", "transcribe", "scripts", "transcribe.py")
 
+_COST_PER_IMAGE_USD = {
+    "gemini-2.0-flash": 0.00012,
+    "gemini-2.5-flash": 0.00036,
+    "gpt-4o":           0.00210,
+    "gpt-4o-mini":      0.00400,
+    "claude-haiku-4.5": 0.00120,
+}
+
+
+def _estimate_video_cost(num_frames, model):
+    per = _COST_PER_IMAGE_USD.get(model, 0.00036)
+    return num_frames * per * 1.3   # 30% padding for prompt/text tokens
+
 
 def load_env():
     path = os.path.join(os.getcwd(), ".env")
@@ -139,7 +152,13 @@ def process_one(url, args):
     """Process a single URL end-to-end; return a dict result."""
     started = time.time()
     video_id = _video_id_from_url(url) or "unknown"
-    work_dir = tempfile.mkdtemp(prefix=f"yt-ribosome-blog-{video_id}-")
+    fixed_temp = f"/tmp/yt-ribosome-blog-{video_id}"
+    if (not args.no_resume) and os.path.isdir(fixed_temp):
+        work_dir = fixed_temp
+        resumed = True
+    else:
+        work_dir = tempfile.mkdtemp(prefix=f"yt-ribosome-blog-{video_id}-")
+        resumed = False
     try:
         md_path, srt_path, title = _run_transcribe(url, work_dir)
         safe = safe_name(title)
@@ -150,7 +169,9 @@ def process_one(url, args):
             return {"url": url, "title": title, "status": "skipped",
                     "reason": "output exists (use --force to overwrite)"}
 
-        video_path = _download_video(url, work_dir)
+        video_path = os.path.join(work_dir, "video.mp4")
+        if not (resumed and os.path.exists(video_path) and os.path.getsize(video_path) > 1_000_000):
+            video_path = _download_video(url, work_dir)
         threshold = (args.scene_threshold
                      if args.scene_threshold is not None
                      else fe.detect_threshold(video_path))
@@ -158,12 +179,14 @@ def process_one(url, args):
         pairs = fe.extract_scene_cuts(video_path, threshold, frames_dir)
         survivors = fe.dedup_by_phash(pairs)
         cues = rh.parse_srt(open(srt_path, encoding="utf-8").read())
+        est_cost = _estimate_video_cost(len(survivors), args.ranker_model)
         ranked = fr.rank_frames(
             survivors, cues,
             model=args.ranker_model,
             batch_size=args.batch_size,
             max_frames_final=args.max_frames_per_video,
             allow_degrade=True,
+            cache_path=os.path.join(work_dir, "ranker_cache.json"),
         )
 
         # Filter: in non-degraded mode, rank_frames returns all frames
@@ -207,6 +230,7 @@ def process_one(url, args):
             "output": out_html,
             "elapsed_s": round(time.time() - started, 1),
             "degraded": any(r.get("degraded") for r in ranked),
+            "est_cost_usd": round(est_cost, 4),
         }
     except Exception as e:
         return {"url": url, "status": "failed", "reason": str(e),
@@ -232,16 +256,26 @@ def main():
     ap.add_argument("--keep-temp", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="Overwrite existing .html outputs")
+    ap.add_argument("--max-cost-usd", type=float, default=1.00,
+                    help="Stop the run if estimated total Gemini cost exceeds this.")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="Do not reuse existing /tmp/yt-ribosome-blog-* directories.")
     args = ap.parse_args()
 
     urls = _list_playlist_urls(args.url)
     print(f"full-blog: {len(urls)} video(s)", flush=True)
     results = []
+    spent = 0.0
     with cf.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         futs = {pool.submit(process_one, u, args): u for u in urls}
         for i, fut in enumerate(cf.as_completed(futs), 1):
             r = fut.result()
             results.append(r)
+            spent += r.get("est_cost_usd") or 0
+            if spent > args.max_cost_usd:
+                print(f"!! Estimated spend ${spent:.2f} exceeded --max-cost-usd "
+                      f"${args.max_cost_usd:.2f}. Press Ctrl-C to stop or wait for "
+                      f"remaining videos to finish.", flush=True)
             tag = r["status"].upper()
             extra = ""
             if r["status"] == "ok":
