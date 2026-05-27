@@ -1,6 +1,6 @@
 {
   "name": "yt-ribosome",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Transcribe YouTube videos/playlists into Markdown, translate them, and convert to HTML blogs with frame snapshots inline (yt-dlp + ffmpeg + OpenAI/Gemini).",
   "author": {
     "name": "supremekim17",
@@ -9,5 +9,15 @@
   "homepage": "https://github.com/SSFSKIM/yt-ribosome",
   "repository": "https://github.com/SSFSKIM/yt-ribosome",
   "license": "MIT",
-  "keywords": ["youtube", "transcription", "translation", "yt-dlp", "whisper", "gpt-4o-transcribe", "gemini", "blog", "html"]
+  "keywords": [
+    "youtube",
+    "transcription",
+    "translation",
+    "yt-dlp",
+    "whisper",
+    "gpt-4o-transcribe",
+    "gemini",
+    "blog",
+    "html"
+  ]
 }

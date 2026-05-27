@@ -34,8 +34,8 @@ formatting. `yt-ribosome` handles all of that for you, as natural-language skill
 ## Features
 
 - 🎯 **Original-language transcripts** — pulls the true source ASR track, not an auto-translation.
-- 🔁 **Caption-first, audio fallback** — uses captions when present; otherwise transcribes the
-  audio with the OpenAI API.
+- 🔁 **Quality-first transcription** — uses creator-uploaded manual subtitles when present;
+  otherwise transcribes the audio with the OpenAI API (`gpt-4o-transcribe`). YouTube auto-captions are skipped by default; opt back in with `--allow-auto-captions`.
 - 🧹 **Clean output** — strips YouTube's rolling-duplicate caption lines; paragraphs even
   punctuation-less captions; writes `.srt` too when timestamps exist.
 - 🌍 **Translate to any language** — OpenAI or Gemini, preserving Markdown structure and URLs.
