@@ -90,3 +90,19 @@ def test_extract_scene_cuts_real_video(tmp_path):
     for ts, path in pairs:
         assert os.path.exists(path)
         assert ts >= 0
+
+
+def test_pts_time_regex_handles_colon_and_equals_formats():
+    """ffmpeg metadata=print writes 'pts_time:NNN.NNN' (colon) — make sure we parse it.
+
+    Regression test for the v0.2.0 bug where the regex used '=' separator and
+    silently fell back to using sequential indices as timestamps.
+    """
+    import re
+    pattern = re.compile(r"pts_time[:=]\s*([\d.]+)")
+    # Real ffmpeg `metadata=print` output (colon form):
+    assert pattern.search("frame:0    pts:4364800 pts_time:284.166667").group(1) == "284.166667"
+    # Tolerate equals form too (showinfo style):
+    assert pattern.search("lavfi.pts_time=12.5").group(1) == "12.5"
+    # No false matches:
+    assert pattern.search("lavfi.scene_score=0.45") is None

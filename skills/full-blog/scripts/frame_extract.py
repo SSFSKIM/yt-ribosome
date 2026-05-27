@@ -122,12 +122,23 @@ def extract_scene_cuts(video_path, threshold, output_dir):
     if os.path.exists(metafile):
         with open(metafile, encoding="utf-8") as f:
             for line in f:
-                m = re.search(r"pts_time=([\d.]+)", line)
+                # ffmpeg `metadata=print` writes "frame:N pts:N pts_time:NNN.NNN"
+                # lines (colon separator) followed by "lavfi.<k>=<v>" pairs.
+                m = re.search(r"pts_time[:=]\s*([\d.]+)", line)
                 if m:
                     pts.append(float(m.group(1)))
     raw_files = sorted(
         f for f in os.listdir(output_dir) if f.startswith("raw_") and f.endswith(".jpg")
     )
+    if raw_files and not pts:
+        # If frames were produced but no pts_time parsed, the metadata filter
+        # format is probably different from what we expect. Fail loudly rather
+        # than silently produce indices 0,1,2,... as timestamps.
+        raise RuntimeError(
+            f"ffmpeg scene-cut produced {len(raw_files)} frames but the metadata "
+            f"file {metafile!r} yielded no pts_time entries — the parser regex "
+            f"may need updating for this ffmpeg version."
+        )
     pairs = []
     for i, raw in enumerate(raw_files):
         ts = pts[i] if i < len(pts) else float(i)
