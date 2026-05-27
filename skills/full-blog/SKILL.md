@@ -1,6 +1,6 @@
 ---
 name: full-blog
-version: 0.2.1
+version: 0.3.0
 description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts frames by uniform sampling, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
 argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--sample-interval N] [--batch-size N] [--workers N] [--max-cost-usd N] [--keep-temp] [--no-resume] [--force]
 allowed-tools: Bash, Read, Write, Edit

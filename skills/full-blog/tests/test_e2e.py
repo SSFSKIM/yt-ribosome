@@ -80,7 +80,8 @@ def test_pipeline_end_to_end_with_mocked_ranker(tmp_path):
     # Structural assertions (more robust than golden-file diff)
     assert html.startswith("<!DOCTYPE html>")
     assert "<article>" in html
-    assert "<h1>Short Talk</h1>" in html
+    # Title is rendered with the Humanist Creator template class
+    assert '<h1 class="post-title">Short Talk</h1>' in html
     # Every kept frame produces one <figure
     assert html.count("<figure") == len(kept)
     # Source link present
