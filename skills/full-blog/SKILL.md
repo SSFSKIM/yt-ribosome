@@ -2,7 +2,7 @@
 name: full-blog
 version: 0.2.1
 description: This skill should be used when the user asks to "turn this YouTube video into a blog post", "make a full blog from a YouTube URL with images", "유튜브 영상을 블로그로 변환해줘", "video to blog", "embed slides into the transcript", or wants the transcript PLUS meaningful frame snapshots in an HTML page. Extracts frames by uniform sampling, deduplicates with perceptual hash, ranks with Gemini Flash against transcript context, and renders semantic HTML with clickable YouTube deep-links. For transcript-only output, use the `transcribe` skill instead.
-argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--sample-interval N] [--workers N] [--max-cost-usd N] [--no-resume] [--force]
+argument-hint: <youtube-url> [--out-dir DIR] [--ranker-model gemini-2.5-flash|gemini-2.0-flash] [--max-frames-per-video N] [--sample-interval N] [--batch-size N] [--workers N] [--max-cost-usd N] [--keep-temp] [--no-resume] [--force]
 allowed-tools: Bash, Read, Write, Edit
 ---
 
@@ -20,6 +20,16 @@ Run the bundled script — it does the whole pipeline.
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/full-blog/scripts/full_blog.py" "<URL>" [options]
 ```
+
+`${CLAUDE_PLUGIN_ROOT}` is set automatically when this skill runs inside the
+Claude Code plugin runtime. If invoking the script from a vanilla shell,
+replace it with the absolute path to the repo root (e.g.
+`/path/to/yt-ribosome`).
+
+`python3` here must be the interpreter you installed the deps into. On macOS,
+`/usr/bin/python3` and a Homebrew `python3` use separate site-packages dirs;
+if you hit `ModuleNotFoundError`, double-check `which python3` matches the
+one used for `pip install -r requirements-full-blog.txt`.
 
 Per video, the script:
 
@@ -54,7 +64,12 @@ Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with
    - `--sample-interval N` — seconds between uniform samples (default 5).
      Lower = denser coverage + more Gemini cost; raise to 10 for long lectures
      where you don't need slide-by-slide capture.
+   - `--batch-size N` — frames per Gemini call (default 10; lower if you hit
+     RPM rate limits).
    - `--workers N` — parallel videos (default 2; Gemini RPM-aware).
+   - `--keep-temp` — preserve the `/tmp/yt-ribosome-blog-*/` workdir after
+     each video (useful for debugging frame extraction or replaying renders
+     without re-downloading).
    - `--max-cost-usd N` — soft ceiling on estimated total Gemini spend (default 1.00).
    - `--no-resume` — don't reuse cached /tmp dirs from earlier runs (default off, i.e. reuse enabled).
    - `--force` — overwrite existing `.html`.
@@ -92,11 +107,12 @@ For each `.html` the script produced, use **Read** + **Edit** to:
    piece of a split paragraph; omit it on the continuation pieces.
 5. **Add `<hr class="divider">`** between major sections only when the topic
    really shifts (a triple-dot ornament; don't overuse).
-6. **Empty the "Additional frames" tail.** Move each `<figure>` in
-   `<section class="tail-section">` into the body section that matches its
-   `data-timestamp`, then delete the empty tail `<section>`. (If a figure
-   truly doesn't belong anywhere, leaving it in the tail is fine — but try
-   first.)
+6. **Empty the "Additional frames" tail — only if one was emitted.** Search
+   the file for `<section class="tail-section">`; if absent (common when all
+   frames aligned cleanly), skip this step. Otherwise move each `<figure>`
+   in that section into the body section matching its `data-timestamp`, then
+   delete the empty tail `<section>`. (If a figure truly doesn't belong
+   anywhere, leaving it in the tail is fine — but try first.)
 7. **Polish the H1 if needed.** The default `<h1 class="post-title">` is the
    raw YouTube title (often padded with prefixes like `01.` or channel
    noise). Rewrite it as a clean editorial title if it reads poorly.

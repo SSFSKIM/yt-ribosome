@@ -6,12 +6,19 @@
 |---|---|
 | `yt-dlp` (recent) | video + transcript download |
 | `ffmpeg` | frame extraction (uniform sampling) |
-| `pip install imagehash Pillow google-genai` | phash dedup + Gemini ranker |
+| `pip install -r requirements-full-blog.txt` | phash dedup + Gemini ranker + OpenAI fallback |
 | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Gemini ranker |
 | `OPENAI_API_KEY` (optional) | transcribe.py audio fallback for videos without captions |
 
 API keys are read from the environment or a `.env` file in the current working
 directory.
+
+**Python interpreter gotcha (macOS)**: `python3` may resolve to Homebrew's
+copy (`/opt/homebrew/bin/python3`) while you installed the deps into the
+system Python (`/usr/bin/python3`), or vice versa. Install with `<python> -m
+pip install --user -r requirements-full-blog.txt` against the *same*
+interpreter you intend to run the script with. `which python3` tells you
+which one your shell will pick.
 
 ## Flags
 
@@ -42,6 +49,11 @@ blogs/
 
 Each `.html` file is self-contained (inline CSS, relative image paths). The
 adjacent folder of the same name holds the chosen frames.
+
+**Filename sanitisation**: characters unsafe in filesystem paths are
+replaced — most commonly `:` and `?` become ` - ` and the trailing chars
+are trimmed. The output filename therefore won't be an exact substring of
+the YouTube title; use `_run_summary.json` if you need to map machine-side.
 
 ## Troubleshooting
 
