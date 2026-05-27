@@ -233,8 +233,48 @@ def transcribe_audio(url, vid, model, language, tmp):
             continue
         start_ms = i * chunk_seconds * 1000
         end_ms = (i + 1) * chunk_seconds * 1000
-        segments.append([start_ms, end_ms, text])
+        # Split the chunk into sentence-sized cues with interpolated timestamps.
+        # gpt-4o-transcribe gives one big text per chunk; emitting it as a
+        # single 60-second cue makes the SRT useless as actual subtitles and
+        # breaks downstream paragraph→time alignment (full-blog uses srt cues
+        # to decide where to splice frame snapshots). Splitting on Korean/
+        # English sentence punctuation and interpolating by char position
+        # inside the chunk gives ~10–20× finer cues with no extra API cost.
+        segments.extend(_split_chunk_into_cues(text, start_ms, end_ms))
     return segments
+
+
+_SENT_BOUNDARY = re.compile(r"(?<=[.?!。])\s+")
+
+
+def _split_chunk_into_cues(text, chunk_start_ms, chunk_end_ms):
+    """Slice one chunk's text into sentence-level cues.
+
+    Without word-level timestamps from the model, we approximate each
+    sentence's start by its character position within the chunk and the
+    chunk's known [start, end] bounds. Sentences are detected by Korean/
+    English sentence-ending punctuation followed by whitespace.
+    """
+    sentences = [s.strip() for s in _SENT_BOUNDARY.split(text.strip()) if s.strip()]
+    if not sentences:
+        return []
+    total = sum(len(s) for s in sentences)
+    if total == 0:
+        return []
+    duration = chunk_end_ms - chunk_start_ms
+    out = []
+    cursor = 0
+    for s in sentences:
+        char_start, char_end = cursor, cursor + len(s)
+        start = chunk_start_ms + int(duration * char_start / total)
+        end   = chunk_start_ms + int(duration * char_end   / total)
+        # Guarantee monotonicity and min 200 ms cue length so write_srt
+        # doesn't emit zero-width cues for very short sentences.
+        if end <= start:
+            end = start + 200
+        out.append([start, end, s])
+        cursor = char_end
+    return out
 
 
 # --------------------------------------------------------------------------- #
