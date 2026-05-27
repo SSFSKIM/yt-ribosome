@@ -91,11 +91,19 @@ def _parse_response(raw, expected_len):
 
 
 def _call_gemini(model, prompt, image_paths, api_key=None):
-    """Real Gemini call — separated so tests can mock it."""
+    """Real Gemini call — separated so tests can mock it.
+
+    Detects Vertex AI Express keys (prefix "AQ.") and routes them through the
+    Vertex client; standard Gemini API keys ("AIza...") use the default client.
+    """
     from google import genai
 
-    client = genai.Client(api_key=api_key or os.environ.get("GEMINI_API_KEY")
-                                          or os.environ.get("GOOGLE_API_KEY"))
+    key = api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    # "AQ." == Vertex AI Express key; "AIza" == standard Gemini API key
+    if key and key.startswith("AQ."):
+        client = genai.Client(vertexai=True, api_key=key)
+    else:
+        client = genai.Client(api_key=key)
     parts = [prompt]
     for p in image_paths:
         with open(p, "rb") as f:

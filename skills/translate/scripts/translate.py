@@ -291,7 +291,12 @@ def _call_html_batch(nodes_json, target, provider, model):
             data = data["translations"]
     else:
         from google import genai
-        client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
+        key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        # "AQ." == Vertex AI Express key; "AIza" == standard Gemini API key
+        if key and key.startswith("AQ."):
+            client = genai.Client(vertexai=True, api_key=key)
+        else:
+            client = genai.Client(api_key=key)
         resp = client.models.generate_content(
             model=model or "gemini-2.5-flash",
             contents=prompt,
