@@ -1,0 +1,145 @@
+1
+00:00:00,000 --> 00:00:02,400
+OK, I'm going to tell you a little bit about how
+
+2
+00:00:02,400 --> 00:00:05,640
+a very small team, it was three people for most
+
+3
+00:00:05,640 --> 00:00:09,280
+of the development, built Cloud Design in about 10 weeks
+
+4
+00:00:09,280 --> 00:00:10,880
+from idea to launching the product.
+
+5
+00:00:10,880 --> 00:00:13,120
+And the reason I'm going to share these things with you
+
+6
+00:00:13,120 --> 00:00:15,300
+is because the most common question I get asked
+
+7
+00:00:15,300 --> 00:00:17,520
+is, why did you decide to start working on this?
+
+8
+00:00:17,520 --> 00:00:20,240
+How did you see that this was an opportunity for building
+
+9
+00:00:20,240 --> 00:00:22,360
+a new AI-enabled product?
+
+10
+00:00:22,360 --> 00:00:23,240
+How'd you build it?
+
+11
+00:00:23,240 --> 00:00:25,180
+How'd you launch it?
+
+12
+00:00:25,180 --> 00:00:26,719
+So everything I'm going to cover here,
+
+13
+00:00:26,719 --> 00:00:28,680
+there is no real secret sauce.
+
+14
+00:00:28,680 --> 00:00:30,920
+These are all things that work well for us.
+
+15
+00:00:30,920 --> 00:00:31,719
+Take what you like.
+
+16
+00:00:31,719 --> 00:00:35,360
+You can do a lot of these things tomorrow.
+
+17
+00:00:35,360 --> 00:00:38,520
+To start, I want to tell you about what Anthropic Labs is.
+
+18
+00:00:38,520 --> 00:00:39,320
+It's kind of funny.
+
+19
+00:00:39,320 --> 00:00:42,360
+It's a lab inside a frontier lab.
+
+20
+00:00:42,360 --> 00:00:44,240
+We don't have any labs within Anthropic Labs,
+
+21
+00:00:44,240 --> 00:00:47,040
+but it is labs quite a ways down.
+
+22
+00:00:47,040 --> 00:00:51,439
+The way that we usually talk about it is as a bet factory.
+
+23
+00:00:51,439 --> 00:00:54,299
+And by that, I mean we have very small teams exploring
+
+24
+00:00:54,299 --> 00:00:56,720
+the frontier of what the models can do
+
+25
+00:00:56,720 --> 00:01:00,279
+and making bets about whether or not something will work.
+
+26
+00:01:00,279 --> 00:01:03,599
+We run experiments to find out what works.
+
+27
+00:01:03,599 --> 00:01:05,879
+We double down on the things that are working.
+
+28
+00:01:05,879 --> 00:01:08,839
+We fold the things that are not working.
+
+29
+00:01:08,839 --> 00:01:12,440
+And at any given time, we might have a dozen small teams
+
+30
+00:01:12,440 --> 00:01:15,400
+exploring different concepts.
+
+31
+00:01:15,400 --> 00:01:18,400
+So it's lots of exploration, small number
+
+32
+00:01:18,400 --> 00:01:20,480
+of really high conviction releases of things
+
+33
+00:01:20,480 --> 00:01:23,080
+that we think can be moonshots or change how
+
+34
+00:01:23,080 --> 00:01:26,120
+people work with the models.
+
+35
+00:01:26,120 --> 00:01:28,919
+There's a few products that came from here that you may know.
+
+36
+00:01:28,919 --> 00:01:31,320
+Cloud Code came out of labs.
+
+

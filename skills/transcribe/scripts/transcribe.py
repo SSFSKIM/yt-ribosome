@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Transcribe a YouTube video or playlist into Markdown.
 
-Pipeline per video:
-  1. Try the original-language auto-caption (the YouTube ".*-orig" ASR track) or
-     a manual subtitle via yt-dlp. Parse to clean, de-duplicated segments.
-  2. If no caption exists and audio fallback is enabled, download the audio,
-     split it into <=24MB chunks, and transcribe with the OpenAI API
-     (gpt-4o-transcribe by default, whisper-1 optional).
+Pipeline per video (v0.2.1+ — smart caption policy):
+  1. Try to download MANUAL subtitles via yt-dlp (creator-uploaded; high quality).
+     If found, parse to clean, de-duplicated segments.
+  2. Otherwise download the audio and transcribe with the OpenAI API
+     (gpt-4o-transcribe by default, whisper-1 optional). YouTube's auto-generated
+     captions are NOT used by default — they're typically inaccurate and
+     produce poor downstream blogs/translations. Pass --allow-auto-captions to
+     opt back into the old caption-first behavior.
   3. Write `NN - Title.md` (title + source link + paragraphed body). When a
-     caption with timestamps was used, also write `NN - Title.srt` unless
-     --no-srt is given.
+     caption with timestamps was used (or audio fallback also produces an SRT),
+     also write `NN - Title.srt` unless --no-srt is given.
 
 Transcripts are produced in the video's ORIGINAL language (no translation here).
 
@@ -111,21 +113,35 @@ def list_entries(url):
     return entries
 
 
-def download_caption(url, dest_dir, vid):
-    """Download the original-language caption track; return a file path or None."""
-    subprocess.run(
-        YDLP_BASE + [
-            "--skip-download", "--write-subs", "--write-auto-subs",
-            "--sub-langs", ".*-orig,.*", "--sub-format", "json3/vtt",
-            "-o", os.path.join(dest_dir, "%(id)s.%(ext)s"), url,
-        ],
-        capture_output=True, text=True,
-    )
+def download_caption(url, dest_dir, vid, allow_auto=False):
+    """Download a caption track via yt-dlp; return (path, is_auto) or (None, None).
+
+    Always prefers manual (creator-uploaded) subtitles. Auto-generated captions
+    (the ``*-orig.*`` ASR track) are skipped by default — they're often noisy.
+    Pass ``allow_auto=True`` to fall back to the auto track when no manual sub
+    is available.
+    """
+    flags = ["--skip-download", "--write-subs"]
+    if allow_auto:
+        flags.append("--write-auto-subs")
+    flags += ["--sub-langs", ".*-orig,.*", "--sub-format", "json3/vtt",
+              "-o", os.path.join(dest_dir, "%(id)s.%(ext)s")]
+    subprocess.run(YDLP_BASE + flags + [url], capture_output=True, text=True)
+
     cands = glob.glob(os.path.join(dest_dir, f"{vid}.*"))
-    vtt = [c for c in cands if c.endswith(".vtt")]
-    orig = [c for c in cands if c.endswith("-orig.json3")]
-    j3 = [c for c in cands if c.endswith(".json3")]
-    return (orig or vtt or j3 or [None])[0]
+    sub_files = [c for c in cands if c.endswith((".json3", ".vtt"))]
+    if not sub_files:
+        return None, None
+    # Manual subs do NOT contain "-orig" in the filename; auto tracks do.
+    manual = [c for c in sub_files if "-orig" not in os.path.basename(c)]
+    if manual:
+        # Prefer json3 over vtt within the manual set (richer formatting).
+        manual.sort(key=lambda p: 0 if p.endswith(".json3") else 1)
+        return manual[0], False
+    if allow_auto:
+        sub_files.sort(key=lambda p: 0 if p.endswith(".json3") else 1)
+        return sub_files[0], True
+    return None, None
 
 
 def parse_json3(path):
@@ -176,31 +192,89 @@ def write_srt(segments, path):
 # --------------------------------------------------------------------------- #
 def transcribe_audio(url, vid, model, language, tmp):
     audio = os.path.join(tmp, f"{vid}.mp3")
-    subprocess.run(
-        YDLP_BASE + ["-f", "bestaudio", "-x", "--audio-format", "mp3",
+    # Use "bestaudio/best" — fall back to muxed video when no audio-only stream
+    # is published (YouTube increasingly serves muxed mp4 only for some videos).
+    # `-x` will extract audio from whichever stream wins the format selector.
+    res = subprocess.run(
+        YDLP_BASE + ["-f", "bestaudio/best", "-x", "--audio-format", "mp3",
                      "--audio-quality", "5", "-o", os.path.join(tmp, f"{vid}.%(ext)s"), url],
         capture_output=True, text=True,
     )
     if not os.path.isfile(audio):
-        raise RuntimeError("audio download failed")
+        raise RuntimeError(
+            f"audio download failed (yt-dlp exit={res.returncode}): "
+            f"{res.stderr.strip()[-300:] or '(no stderr)'}"
+        )
     chunk_dir = os.path.join(tmp, "chunks")
     os.makedirs(chunk_dir, exist_ok=True)
+    # 60-second chunks let us synthesize SRT cues with chunk-level timestamps
+    # since gpt-4o-transcribe/gpt-4o-mini-transcribe do not expose per-segment
+    # times (only `json` and `text` formats). Whisper-1 supports `srt` natively
+    # but we keep a uniform chunk pipeline so quality/timestamps don't depend
+    # on the model choice.
+    chunk_seconds = 60
     subprocess.run(
         ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", audio,
          "-ar", "16000", "-ac", "1", "-b:a", "48k",
-         "-f", "segment", "-segment_time", "600",
+         "-f", "segment", "-segment_time", str(chunk_seconds),
          os.path.join(chunk_dir, "c_%03d.mp3")],
         check=True,
     )
     from openai import OpenAI
     client = OpenAI()
-    parts = []
-    for chunk in sorted(glob.glob(os.path.join(chunk_dir, "c_*.mp3"))):
+    chunks = sorted(glob.glob(os.path.join(chunk_dir, "c_*.mp3")))
+    segments = []
+    for i, chunk in enumerate(chunks):
         kwargs = dict(model=model, response_format="text", file=open(chunk, "rb"))
         if language:
             kwargs["language"] = language
-        parts.append(client.audio.transcriptions.create(**kwargs).strip())
-    return " ".join(p for p in parts if p)
+        text = client.audio.transcriptions.create(**kwargs).strip()
+        if not text:
+            continue
+        start_ms = i * chunk_seconds * 1000
+        end_ms = (i + 1) * chunk_seconds * 1000
+        # Split the chunk into sentence-sized cues with interpolated timestamps.
+        # gpt-4o-transcribe gives one big text per chunk; emitting it as a
+        # single 60-second cue makes the SRT useless as actual subtitles and
+        # breaks downstream paragraph→time alignment (full-blog uses srt cues
+        # to decide where to splice frame snapshots). Splitting on Korean/
+        # English sentence punctuation and interpolating by char position
+        # inside the chunk gives ~10–20× finer cues with no extra API cost.
+        segments.extend(_split_chunk_into_cues(text, start_ms, end_ms))
+    return segments
+
+
+_SENT_BOUNDARY = re.compile(r"(?<=[.?!。])\s+")
+
+
+def _split_chunk_into_cues(text, chunk_start_ms, chunk_end_ms):
+    """Slice one chunk's text into sentence-level cues.
+
+    Without word-level timestamps from the model, we approximate each
+    sentence's start by its character position within the chunk and the
+    chunk's known [start, end] bounds. Sentences are detected by Korean/
+    English sentence-ending punctuation followed by whitespace.
+    """
+    sentences = [s.strip() for s in _SENT_BOUNDARY.split(text.strip()) if s.strip()]
+    if not sentences:
+        return []
+    total = sum(len(s) for s in sentences)
+    if total == 0:
+        return []
+    duration = chunk_end_ms - chunk_start_ms
+    out = []
+    cursor = 0
+    for s in sentences:
+        char_start, char_end = cursor, cursor + len(s)
+        start = chunk_start_ms + int(duration * char_start / total)
+        end   = chunk_start_ms + int(duration * char_end   / total)
+        # Guarantee monotonicity and min 200 ms cue length so write_srt
+        # doesn't emit zero-width cues for very short sentences.
+        if end <= start:
+            end = start + 200
+        out.append([start, end, s])
+        cursor = char_end
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -212,19 +286,21 @@ def process_video(idx, vid, title, args):
     if os.path.exists(base + ".md") and not args.overwrite:
         return f"skip (exists): {idx:02d} {title[:50]}"
     with tempfile.TemporaryDirectory() as tmp:
-        cap = download_caption(url, tmp, vid)
+        cap, is_auto = download_caption(url, tmp, vid, allow_auto=args.allow_auto_captions)
         if cap:
             segs = parse_json3(cap) if cap.endswith(".json3") else parse_vtt(cap)
-            source = "caption"
+            source = "caption:auto" if is_auto else "caption:manual"
             if segs and not args.no_srt:
                 write_srt(segs, base + ".srt")
             body = paragraphs([s[2] for s in segs])
         elif args.no_audio_fallback:
-            return f"NO CAPTION, fallback disabled: {idx:02d} {title[:50]}"
+            return f"NO MANUAL CAPTION, audio disabled: {idx:02d} {title[:50]}"
         else:
-            text = transcribe_audio(url, vid, args.fallback_model, args.audio_language, tmp)
+            segs = transcribe_audio(url, vid, args.fallback_model, args.audio_language, tmp)
             source = f"audio:{args.fallback_model}"
-            body = paragraphs([text])
+            if segs and not args.no_srt:
+                write_srt(segs, base + ".srt")
+            body = paragraphs([s[2] for s in segs])
     md = [f"# {idx:02d}. {title}", "", f"[YouTube]({url})", ""] + "\n\n".join(body).split("\n")
     open(base + ".md", "w", encoding="utf-8").write("\n".join(md).rstrip() + "\n")
     return f"done [{source}]: {idx:02d} {title[:50]} ({sum(len(b) for b in body)} chars)"
@@ -241,6 +317,11 @@ def main():
                     help="ISO code to force for audio transcription (avoids mis-detection)")
     ap.add_argument("--no-audio-fallback", action="store_true",
                     help="caption-only; skip the OpenAI audio fallback")
+    ap.add_argument("--allow-auto-captions", action="store_true",
+                    help="use YouTube auto-generated captions when manual subs "
+                         "are unavailable, instead of falling back to "
+                         "gpt-4o-transcribe. Cheaper but lower-quality (auto "
+                         "captions are often noisy).")
     ap.add_argument("--no-srt", action="store_true", help="do not write .srt even when timestamps exist")
     ap.add_argument("--workers", type=int, default=4, help="parallel videos (default: 4)")
     ap.add_argument("--overwrite", action="store_true", help="re-process even if .md exists")

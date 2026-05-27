@@ -2,7 +2,7 @@
 
 [![Claude Code Plugin](https://img.shields.io/badge/Claude%20Code-plugin-8A2BE2.svg)](https://code.claude.com/docs/en/plugins)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-0.1.3-green.svg)](.claude-plugin/plugin.json)
+[![Version](https://img.shields.io/badge/version-0.2.0-green.svg)](.claude-plugin/plugin.json)
 
 **Run Transcription and Translation for Youtube or playlist into clean Markdown transcripts.**
 
@@ -13,7 +13,10 @@ In the world where there's just so much information out there, you might want to
 your information ingestion time, and automated transcription --> translation pipeline help you
 get any youtube knowledge out there efficiently.
 
-Embedding image coming up for next version.
+**New in v0.2.0:** the `full-blog` skill produces a self-contained HTML page with the
+transcript and ~10–25 meaningful frame snapshots embedded inline. Click any frame to
+jump to that moment on YouTube. Translate the result with `translate` to ship localized
+blog posts.
 
 ```
 YouTube URL ──▶ transcribe ──▶ Markdown (original language) ──▶ translate ──▶ Markdown (your language)
@@ -31,8 +34,8 @@ formatting. `yt-ribosome` handles all of that for you, as natural-language skill
 ## Features
 
 - 🎯 **Original-language transcripts** — pulls the true source ASR track, not an auto-translation.
-- 🔁 **Caption-first, audio fallback** — uses captions when present; otherwise transcribes the
-  audio with the OpenAI API.
+- 🔁 **Quality-first transcription** — uses creator-uploaded manual subtitles when present;
+  otherwise transcribes the audio with the OpenAI API (`gpt-4o-transcribe`). YouTube auto-captions are skipped by default; opt back in with `--allow-auto-captions`.
 - 🧹 **Clean output** — strips YouTube's rolling-duplicate caption lines; paragraphs even
   punctuation-less captions; writes `.srt` too when timestamps exist.
 - 🌍 **Translate to any language** — OpenAI or Gemini, preserving Markdown structure and URLs.
@@ -41,13 +44,41 @@ formatting. `yt-ribosome` handles all of that for you, as natural-language skill
   steps are resumable.
 - ⚡ **Parallel** — videos and files are processed concurrently.
 
+## Full-Blog Output
+
+`full-blog` produces a self-contained HTML page with the transcript and meaningful
+frames embedded inline at the timestamp each frame was captured. Each `<figure>` deep-
+links back to YouTube via `?t=` so readers can jump to the moment.
+
+```bash
+# v0.2.0 — turn a YouTube URL into an HTML blog with images
+python3 skills/full-blog/scripts/full_blog.py "<URL>" --out-dir blogs
+
+# Then translate (HTML-aware):
+python3 skills/translate/scripts/translate.py blogs/ --to Korean
+```
+
+Output structure:
+
+```
+blogs/
+├── 01 - My Talk.html
+├── 01 - My Talk/
+│   ├── 00_03_12.jpg
+│   └── 00_05_44.jpg
+└── _run_summary.json
+```
+
+Cost target: ~$0.10 per 60-min video with `gemini-2.5-flash`. ~$0.03 with `gemini-2.0-flash`.
+
 ## Skills
 
 | Skill | What it does | Say something like |
 |-------|--------------|--------------------|
 | **`transcribe`** | YouTube → original-language Markdown | "transcribe this video/playlist", "유튜브 트랜스크립트 받아줘" |
-| **`translate`** | transcript/Markdown files → target language | "translate these to Korean", "한국어로 번역해줘" |
+| **`translate`** | transcript/Markdown/HTML files → target language | "translate these to Korean", "한국어로 번역해줘" |
 | **`transcribe-and-translate`** | both, end to end | "transcribe this and translate it to Korean" |
+| **`full-blog`** | YouTube → HTML blog with embedded frame snapshots | "make a full blog from this video", "유튜브 영상을 블로그로 변환해줘" |
 
 ## Install
 
@@ -69,6 +100,8 @@ claude --plugin-dir /path/to/yt-ribosome
 | `yt-dlp` (recent) + `ffmpeg` | all transcription |
 | `openai` + `OPENAI_API_KEY` | audio fallback **and** OpenAI translation |
 | `google-genai` + `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Gemini translation |
+| `imagehash`, `Pillow` (`pip install imagehash Pillow`) | full-blog: perceptual-hash frame deduplication |
+| `beautifulsoup4` (`pip install beautifulsoup4`) | translate: HTML support (v0.2.0) |
 
 ```bash
 pip install -U yt-dlp openai google-genai     # ffmpeg: brew install ffmpeg / apt install ffmpeg

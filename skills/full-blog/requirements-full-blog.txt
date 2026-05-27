@@ -1,0 +1,23 @@
+# Python dependencies for the `full-blog` skill.
+#
+# Install into the SAME interpreter you will invoke `full_blog.py` with:
+#   /usr/bin/python3 -m pip install --user -r requirements-full-blog.txt
+#
+# On macOS, `python3` from Homebrew (/opt/homebrew/bin/python3) and the system
+# Python (/usr/bin/python3) install packages into different site-packages dirs.
+# If you hit ModuleNotFoundError when running `full_blog.py`, you almost
+# certainly installed against a different interpreter than the one in your
+# PATH's `python3`.
+#
+# `yt-dlp` and `ffmpeg` are NOT pip-installed — see README / SKILL.md.
+
+# Frame extraction + perceptual-hash dedup
+Pillow>=10.0,<12.0
+imagehash>=4.3,<5.0
+
+# Gemini ranker (vision)
+google-genai>=0.3,<2.0
+
+# OpenAI audio transcription fallback (used by transcribe.py when YouTube
+# captions are absent or low quality; full-blog calls transcribe.py first)
+openai>=1.40,<3.0

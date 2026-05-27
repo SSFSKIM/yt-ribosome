@@ -1,0 +1,6 @@
+# Public, short, slide-heavy YouTube fixture for integration tests.
+# This file is committed; the .mp4 is downloaded on first test run and gitignored.
+https://www.youtube.com/watch?v=Uvl-tRga98g
+# Trim window: 60-150 seconds (90 s slice — pick something representative)
+trim_start=60
+trim_length=90

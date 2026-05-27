@@ -4,3 +4,8 @@ _smoketest/
 transcripts/
 transcripts-*/
 .env
+
+# full-blog skill
+blogs/
+skills/full-blog/tests/fixtures/*.mp4
+/tmp/yt-ribosome-blog-*
