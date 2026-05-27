@@ -456,6 +456,56 @@ figcaption .caption-text {{
   opacity: 0.7;
 }}
 
+/* ---------- Figure row (gallery) ---------- */
+/* When several frames land in the same paragraph, stacking them vertically
+   wastes vertical space and makes the article feel padded with screenshots.
+   A grid row arranges 2–3 side-by-side; 4+ wrap. On mobile (<640px) the
+   grid collapses to 1 column so screenshots stay legible.
+   We override the per-figure breakout (negative margins) — instead the row
+   itself breaks out so the gallery looks deliberate, not glued together. */
+.figure-row {{
+  display: grid;
+  gap: var(--space-md);
+  margin: var(--space-lg) 0;
+}}
+.figure-row > figure {{
+  margin: 0;            /* row owns the spacing */
+}}
+@media (min-width: 760px) {{
+  .figure-row {{
+    margin-left: -32px;
+    margin-right: -32px;
+  }}
+  .figure-row > figure {{
+    margin-left: 0;
+    margin-right: 0;
+  }}
+}}
+.figure-row[data-count="2"] {{
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}}
+.figure-row[data-count="3"] {{
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}}
+/* Tighter caption typography inside galleries so 2–3 captions stay
+   horizontally balanced without crowding. */
+.figure-row figcaption {{
+  margin: 10px 6px 0;
+  font-size: 12px;
+  gap: 8px;
+}}
+.figure-row .ts-chip {{
+  padding: 3px 9px;
+  font-size: 11px;
+}}
+@media (max-width: 640px) {{
+  .figure-row,
+  .figure-row[data-count="2"],
+  .figure-row[data-count="3"] {{
+    grid-template-columns: 1fr;
+  }}
+}}
+
 /* ---------- Tail section ---------- */
 .tail-section {{
   margin-top: var(--space-xl);
@@ -558,6 +608,40 @@ def _figure_block(image_dir, image_filename, timestamp_s, alt, caption, video_id
     )
 
 
+def _emit_frames(frames, video_id):
+    """Emit figure markup, grouping ≥2 adjacent frames into a `.figure-row`.
+
+    One frame -> a single full-width `<figure>` (existing behavior).
+    Two or more frames belonging to the same paragraph stack vertically
+    in a narrow column and waste reading space; wrapping them in a grid
+    row makes them scannable side-by-side. We cap the row at 3 across,
+    so 4 frames render as 3+1 (CSS handles the wrap). `data-count` lets
+    the stylesheet pick the right grid template per count.
+    """
+    if not frames:
+        return []
+    if len(frames) == 1:
+        fr = frames[0]
+        d, _, fn = fr["path_rel"].rpartition("/")
+        return [_figure_block(
+            image_dir=d, image_filename=fn,
+            timestamp_s=fr["timestamp_s"],
+            alt=fr.get("alt", ""), caption=fr.get("caption", ""),
+            video_id=video_id,
+        )]
+    n = min(len(frames), 3)  # CSS template caps at 3-up; wraps beyond that
+    inner = []
+    for fr in frames:
+        d, _, fn = fr["path_rel"].rpartition("/")
+        inner.append(_figure_block(
+            image_dir=d, image_filename=fn,
+            timestamp_s=fr["timestamp_s"],
+            alt=fr.get("alt", ""), caption=fr.get("caption", ""),
+            video_id=video_id,
+        ))
+    return [f'<div class="figure-row" data-count="{n}">'] + inner + ['</div>']
+
+
 def _para_block(para_text, srt_start_s):
     """A flat paragraph with a `data-srt-start` time anchor (seconds).
 
@@ -599,26 +683,14 @@ def render_html(title, source_url, paragraphs, paragraph_ranges, frames,
     parts = []
     for i, para in enumerate(paragraphs):
         parts.append(_para_block(para, start_by_p.get(i)))
-        for fr in sorted(by_p.get(i, []), key=lambda f: f["timestamp_s"]):
-            d, _, fn = fr["path_rel"].rpartition("/")
-            parts.append(_figure_block(
-                image_dir=d, image_filename=fn,
-                timestamp_s=fr["timestamp_s"],
-                alt=fr.get("alt", ""), caption=fr.get("caption", ""),
-                video_id=video_id,
-            ))
+        frames_here = sorted(by_p.get(i, []), key=lambda f: f["timestamp_s"])
+        parts.extend(_emit_frames(frames_here, video_id))
 
     if tail:
         parts.append('<section class="tail-section">')
         parts.append('<h2>Additional frames</h2>')
-        for fr in sorted(tail, key=lambda f: f["timestamp_s"]):
-            d, _, fn = fr["path_rel"].rpartition("/")
-            parts.append(_figure_block(
-                image_dir=d, image_filename=fn,
-                timestamp_s=fr["timestamp_s"],
-                alt=fr.get("alt", ""), caption=fr.get("caption", ""),
-                video_id=video_id,
-            ))
+        tail_sorted = sorted(tail, key=lambda f: f["timestamp_s"])
+        parts.extend(_emit_frames(tail_sorted, video_id))
         parts.append('</section>')
 
     # A short source label for the top-bar pill ("youtube.com/watch?v=..." trimmed)
