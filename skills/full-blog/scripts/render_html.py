@@ -17,6 +17,7 @@ SKILL.md.
 """
 import html as html_lib
 import re
+import urllib.parse
 
 
 _TS_RE = re.compile(r"(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)")
@@ -592,7 +593,12 @@ def _figure_block(image_dir, image_filename, timestamp_s, alt, caption, video_id
     ts = _ts_str(timestamp_s)
     ts_display = _ts_display(timestamp_s)
     deep = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp_s)}"
-    src = f"{image_dir}/{image_filename}" if image_dir else image_filename
+    raw_src = f"{image_dir}/{image_filename}" if image_dir else image_filename
+    # Percent-encode the src so spaces, Hangul, and other non-ASCII are valid
+    # in a strict URL parser. Browsers tolerate raw chars in <img src> but
+    # static-site link checkers, S3 path normalisation, and some build tools
+    # do not. safe="/" preserves the directory separator.
+    src = urllib.parse.quote(raw_src, safe="/")
     deep_esc = html_lib.escape(deep, quote=True)
     return (
         f'<figure data-timestamp="{ts}">'

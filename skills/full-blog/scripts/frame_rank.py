@@ -12,6 +12,7 @@ Tests mock _call_gemini; in production it uses google-genai.
 import imagehash
 import json
 import os
+import sys
 import re
 import time
 from PIL import Image
@@ -148,6 +149,15 @@ def _ranker_call_with_retries(model, prompt, image_paths, max_attempts=5,
             time.sleep(min(32.0, base_delay * (2 ** attempt)))
     if len(image_paths) > 1:
         mid = len(image_paths) // 2
+        # Emit a one-line stderr trace so production hangs leave evidence.
+        # Without this the v0.3.1 timeout->bisect path is invisible in logs —
+        # we'd only know it fired by inferring from frame_rank cost shape.
+        print(
+            f"[ranker] batch failed ({type(last_err).__name__}: {last_err!s}) "
+            f"after {max_attempts} attempts — bisecting {len(image_paths)} -> "
+            f"{mid} + {len(image_paths) - mid}",
+            file=sys.stderr, flush=True,
+        )
         left  = _call_gemini(model, prompt, image_paths[:mid], api_key=api_key)
         right = _call_gemini(model, prompt, image_paths[mid:], api_key=api_key)
         return left + right
