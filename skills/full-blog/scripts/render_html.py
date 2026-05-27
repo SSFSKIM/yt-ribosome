@@ -106,3 +106,104 @@ def pick_paragraph_for_frame(timestamp_s, paragraph_ranges):
         if r["start"] <= timestamp_s < r["end"]:
             return r["p_idx"]
     return -1
+
+
+_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+body{{max-width:720px;margin:2rem auto;padding:0 1rem;
+     font:17px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#222}}
+h1{{font-size:1.8rem;line-height:1.2}}
+h2{{font-size:1.3rem;margin-top:2rem;border-top:1px solid #eee;padding-top:1rem}}
+p{{margin:0.8em 0}}
+figure{{margin:1.5em 0}}
+figure img{{width:100%;height:auto;border-radius:6px;
+           box-shadow:0 2px 8px rgba(0,0,0,0.08)}}
+figcaption{{font-size:0.9em;color:#666;margin-top:0.4em;text-align:center}}
+.ts-link{{color:#888;text-decoration:none}}
+.ts-link:hover{{color:#06f}}
+.source{{display:block;margin:0 0 2em;color:#06f}}
+</style>
+</head>
+<body>
+<article>
+<h1>{title}</h1>
+<p class="source"><a href="{source_url}">▶ Watch on YouTube</a></p>
+{body}
+</article>
+</body>
+</html>
+"""
+
+
+def _ts_str(timestamp_s):
+    s = int(timestamp_s)
+    return f"{s//3600:02d}:{(s%3600)//60:02d}:{s%60:02d}"
+
+
+def _figure_block(image_dir, image_filename, timestamp_s, alt, caption, video_id):
+    ts = _ts_str(timestamp_s)
+    deep = f"https://www.youtube.com/watch?v={video_id}&t={int(timestamp_s)}"
+    src = f"{image_dir}/{image_filename}" if image_dir else image_filename
+    return (
+        f'<figure data-timestamp="{ts}">'
+        f'<a href="{html_lib.escape(deep, quote=True)}"><img src="{html_lib.escape(src, quote=True)}" '
+        f'alt="{html_lib.escape(alt)}" loading="lazy"></a>'
+        f'<figcaption>{html_lib.escape(caption)} '
+        f'<a class="ts-link" href="{html_lib.escape(deep, quote=True)}">({ts})</a></figcaption>'
+        f'</figure>'
+    )
+
+
+def render_html(title, source_url, paragraphs, paragraph_ranges, frames,
+                video_id, image_dir=None, lang="en"):
+    """Render the final HTML.
+
+    paragraphs       : list[str], body paragraphs
+    paragraph_ranges : output of align_paragraphs_to_srt
+    frames           : list[{path_rel, timestamp_s, alt, caption, ...}]
+    video_id         : YouTube video id (for deep-link in figures)
+    image_dir        : directory prefix for img src (defaults to frame's path_rel basename dir)
+    """
+    by_p = {}
+    tail = []
+    for fr in frames:
+        p_idx = pick_paragraph_for_frame(fr["timestamp_s"], paragraph_ranges)
+        if p_idx == -1:
+            tail.append(fr)
+        else:
+            by_p.setdefault(p_idx, []).append(fr)
+
+    parts = []
+    for i, para in enumerate(paragraphs):
+        parts.append(f"<p>{html_lib.escape(para)}</p>")
+        for fr in sorted(by_p.get(i, []), key=lambda f: f["timestamp_s"]):
+            d, _, fn = fr["path_rel"].rpartition("/")
+            parts.append(_figure_block(
+                image_dir=d, image_filename=fn,
+                timestamp_s=fr["timestamp_s"],
+                alt=fr.get("alt", ""), caption=fr.get("caption", ""),
+                video_id=video_id,
+            ))
+
+    if tail:
+        parts.append("<h2>Additional frames</h2>")
+        for fr in sorted(tail, key=lambda f: f["timestamp_s"]):
+            d, _, fn = fr["path_rel"].rpartition("/")
+            parts.append(_figure_block(
+                image_dir=d, image_filename=fn,
+                timestamp_s=fr["timestamp_s"],
+                alt=fr.get("alt", ""), caption=fr.get("caption", ""),
+                video_id=video_id,
+            ))
+
+    return _HTML_TEMPLATE.format(
+        lang=lang,
+        title=html_lib.escape(title),
+        source_url=html_lib.escape(source_url, quote=True),
+        body="\n".join(parts),
+    )

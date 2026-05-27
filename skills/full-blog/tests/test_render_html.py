@@ -60,3 +60,62 @@ def test_pick_paragraph_for_frame():
     assert rh.pick_paragraph_for_frame(25.0, ranges) == 2
     assert rh.pick_paragraph_for_frame(99.0, ranges) == -1
     assert rh.pick_paragraph_for_frame(-1.0, ranges) == -1
+
+
+def test_figure_block_includes_timestamp_and_alt():
+    fig = rh._figure_block(
+        image_dir="my video",
+        image_filename="00_03_12.jpg",
+        timestamp_s=192,
+        alt="Speaker showing diagram",
+        caption="Bet factory",
+        video_id="Uvl-tRga98g",
+    )
+    assert "00_03_12.jpg" in fig
+    assert "Speaker showing diagram" in fig
+    assert "Bet factory" in fig
+    assert "data-timestamp=\"00:03:12\"" in fig
+    assert "t=192" in fig
+    fig2 = rh._figure_block("d", "x.jpg", 0, "A & B", "<x>", "id")
+    assert "A &amp; B" in fig2
+    assert "&lt;x&gt;" in fig2
+
+
+def test_render_html_inserts_figures_between_paragraphs():
+    paragraphs = ["First paragraph.", "Second paragraph.", "Third paragraph."]
+    ranges = [
+        {"p_idx": 0, "start": 0.0,  "end": 10.0},
+        {"p_idx": 1, "start": 10.0, "end": 20.0},
+        {"p_idx": 2, "start": 20.0, "end": 30.0},
+    ]
+    frames = [
+        {"path_rel": "vid/05.jpg", "timestamp_s":  5.0, "alt": "F1", "caption": "C1"},
+        {"path_rel": "vid/15.jpg", "timestamp_s": 15.0, "alt": "F2", "caption": "C2"},
+    ]
+    out = rh.render_html(
+        title="Test", source_url="https://www.youtube.com/watch?v=abc",
+        paragraphs=paragraphs, paragraph_ranges=ranges, frames=frames,
+        video_id="abc",
+    )
+    p1 = out.index("First paragraph.")
+    fig1 = out.index("vid/05.jpg")
+    p2 = out.index("Second paragraph.")
+    fig2 = out.index("vid/15.jpg")
+    p3 = out.index("Third paragraph.")
+    assert p1 < fig1 < p2 < fig2 < p3
+
+
+def test_render_html_unmatched_frame_goes_to_tail_section():
+    paragraphs = ["Only paragraph."]
+    ranges = [{"p_idx": 0, "start": 0.0, "end": 10.0}]
+    frames = [
+        {"path_rel": "vid/99.jpg", "timestamp_s": 99.0, "alt": "F", "caption": "C"},
+    ]
+    out = rh.render_html(
+        title="T", source_url="https://www.youtube.com/watch?v=abc",
+        paragraphs=paragraphs, paragraph_ranges=ranges, frames=frames,
+        video_id="abc",
+    )
+    assert "Additional frames" in out
+    assert "vid/99.jpg" in out
+    assert out.index("Only paragraph.") < out.index("Additional frames")
