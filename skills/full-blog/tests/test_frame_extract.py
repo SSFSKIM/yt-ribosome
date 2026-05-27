@@ -34,3 +34,59 @@ def test_adaptive_threshold_buckets():
     assert fe._threshold_for_cuts(20) == 0.30
     assert fe._threshold_for_cuts(21) == 0.50
     assert fe._threshold_for_cuts(1000) == 0.50
+
+
+SHORT_TALK_MP4 = os.path.join(FIX, "short_talk.mp4")
+
+
+def _ensure_fixture_mp4():
+    """Download the fixture mp4 if not present, using yt-dlp per SOURCE.txt."""
+    if os.path.exists(SHORT_TALK_MP4):
+        return
+    source_file = os.path.join(FIX, "SOURCE.txt")
+    if not os.path.exists(source_file):
+        pytest.skip("SOURCE.txt missing — cannot fetch fixture")
+    url = None
+    trim_start = 0
+    trim_len = 90
+    for line in open(source_file):
+        line = line.strip()
+        if line.startswith("https://"):
+            url = line
+        elif line.startswith("trim_start="):
+            trim_start = int(line.split("=", 1)[1])
+        elif line.startswith("trim_length="):
+            trim_len = int(line.split("=", 1)[1])
+    if not url:
+        pytest.skip("No URL in SOURCE.txt")
+    import subprocess
+    tmp = SHORT_TALK_MP4 + ".raw.mp4"
+    r = subprocess.run(
+        ["yt-dlp", "-f", "mp4", "-o", tmp, url],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        pytest.skip(f"yt-dlp failed: {r.stderr[:200]}")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", tmp, "-ss", str(trim_start), "-t", str(trim_len),
+         "-c", "copy", SHORT_TALK_MP4],
+        check=True, capture_output=True,
+    )
+    os.remove(tmp)
+
+
+@pytest.mark.integration
+def test_detect_threshold_real_video():
+    _ensure_fixture_mp4()
+    th = fe.detect_threshold(SHORT_TALK_MP4)
+    assert th in (0.20, 0.30, 0.50)
+
+
+@pytest.mark.integration
+def test_extract_scene_cuts_real_video(tmp_path):
+    _ensure_fixture_mp4()
+    pairs = fe.extract_scene_cuts(SHORT_TALK_MP4, threshold=0.30, output_dir=str(tmp_path))
+    assert len(pairs) >= 2
+    for ts, path in pairs:
+        assert os.path.exists(path)
+        assert ts >= 0
