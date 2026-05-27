@@ -66,7 +66,25 @@ def load_env():
 
 
 def safe_name(t):
-    return re.sub(r"[/\\:]", "-", t).strip()
+    """Make a YouTube title safe for filesystem AND for URL paths.
+
+    Earlier this only sanitised filesystem-unsafe chars (`/`, `\\`, `:`).
+    That left `?`, `#`, `&`, `+`, parens, brackets, and quotes intact —
+    which works in Finder but breaks when the resulting filename is used
+    as a relative `<img src="…">` because the browser parses `?` and `#`
+    as query/fragment delimiters. A title like "배포는 어떻게함? (AWS)"
+    yielded a directory whose contained images all 404'd in the rendered
+    blog. Strip anything that isn't safely usable in an unencoded URL
+    path segment.
+    """
+    # Replace the hard-unsafe chars first, then collapse other punctuation
+    # browsers misinterpret in `src` attributes.
+    t = re.sub(r"[/\\:?#&+%]", "-", t)
+    t = re.sub(r"[\"'<>(){}\[\]|]", "", t)
+    # Collapse runs of whitespace and dashes, trim leading/trailing.
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"-{2,}", "-", t).strip(" -")
+    return t
 
 
 def _video_id_from_url(url):
@@ -111,10 +129,22 @@ def _run_transcribe(url, work_dir):
 
 
 def _download_video(url, work_dir):
-    """yt-dlp the video as mp4 into work_dir/video.mp4."""
+    """yt-dlp the video as mp4 into work_dir/video.mp4.
+
+    Format selector requests the best video up to 1080p as a separate stream
+    plus the best audio, letting ffmpeg merge them. YouTube historically caps
+    *muxed* mp4 at 360p (sometimes 720p), so `-f best[ext=mp4]` silently
+    downloads 360p when 1080p is available as adaptive streams. Falling back
+    in order: separate-stream merge -> any muxed mp4 -> anything yt-dlp can
+    grab.
+    """
     out = os.path.join(work_dir, "video.mp4")
+    fmt = ("bv*[height<=1080][ext=mp4]+ba[ext=m4a]/"
+           "bv*[height<=1080]+ba/"
+           "b[ext=mp4]/b")
     res = subprocess.run(
-        ["yt-dlp", "-f", "best[ext=mp4]/best", "-o", out, url],
+        ["yt-dlp", "-f", fmt, "--merge-output-format", "mp4",
+         "-o", out, url],
         capture_output=True, text=True,
     )
     if res.returncode != 0:
@@ -297,8 +327,24 @@ def main():
 
     summary_path = os.path.join(args.out_dir, "_run_summary.json")
     os.makedirs(args.out_dir, exist_ok=True)
+    # Merge with any pre-existing summary so two parallel script invocations
+    # to the same --out-dir don't blow each other's results away. We dedup
+    # by `url`, keeping the just-finished entries. Not perfectly atomic
+    # (no fcntl), but covers the common case where processes finish at
+    # different times — which is what was observed in the smoke test.
+    existing = []
+    if os.path.exists(summary_path):
+        try:
+            with open(summary_path, encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, list):
+                    existing = loaded
+        except (json.JSONDecodeError, OSError):
+            pass
+    seen_urls = {r["url"] for r in results}
+    merged = [e for e in existing if e.get("url") not in seen_urls] + results
     with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        json.dump(merged, f, ensure_ascii=False, indent=2)
 
 
 if __name__ == "__main__":

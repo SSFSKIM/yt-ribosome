@@ -65,6 +65,14 @@ def extract_uniform_frames(video_path, output_dir, interval_s=5):
     held slides into a single representative.
     """
     os.makedirs(output_dir, exist_ok=True)
+    # Wipe any .jpg files from a previous extraction so the rename step
+    # doesn't accumulate `_1`, `_2`, ... suffixes on every re-run when
+    # --keep-temp is used. The rename collision detector is meant for
+    # truly-coincident timestamps within a single run, not cross-run
+    # state.
+    for old in os.listdir(output_dir):
+        if old.endswith(".jpg"):
+            os.remove(os.path.join(output_dir, old))
     pattern = os.path.join(output_dir, "raw_%05d.jpg")
     cmd = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
