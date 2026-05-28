@@ -4,6 +4,7 @@ _smoketest/
 transcripts/
 transcripts-*/
 .env
+.playwright-cli/
 
 # full-blog skill
 blogs/
