@@ -284,6 +284,10 @@ def main():
                     help="Seconds between uniform frame samples (default 5). "
                          "Lower = denser coverage + more ranker cost.")
     ap.add_argument("--workers", type=int, default=2)
+    ap.add_argument("--playlist-start", type=int, default=1,
+                    help="When URL is a playlist, start at video N (1-indexed)")
+    ap.add_argument("--playlist-end", type=int, default=None,
+                    help="When URL is a playlist, stop after video N (1-indexed, inclusive)")
     ap.add_argument("--keep-temp", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="Overwrite existing .html outputs")
@@ -295,7 +299,16 @@ def main():
     args = ap.parse_args()
 
     urls = _list_playlist_urls(args.url)
-    print(f"full-blog: {len(urls)} video(s)", flush=True)
+    total = len(urls)
+    # 1-indexed slice for user-facing flags (matches yt-dlp / VLC conventions)
+    lo = max(0, args.playlist_start - 1)
+    hi = args.playlist_end if args.playlist_end is not None else total
+    urls = urls[lo:hi]
+    if total != len(urls):
+        print(f"full-blog: {len(urls)} video(s)  "
+              f"(playlist slice {lo + 1}..{lo + len(urls)} of {total})", flush=True)
+    else:
+        print(f"full-blog: {len(urls)} video(s)", flush=True)
     results = []
     spent = 0.0
     with cf.ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
