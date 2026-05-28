@@ -1,6 +1,6 @@
 ---
 name: translate
-version: 0.1.1
+version: 0.1.2
 description: This skill should be used when the user asks to "translate this transcript", "translate these markdown files to Korean/Japanese/English", "트랜스크립트 번역해줘", "이 문서들 한국어로 번역", "한국어로 번역해줘", or wants transcript/Markdown text localized into another language. Operates on existing files (a file or directory) and does NOT download from YouTube — to fetch a video first, use transcribe or transcribe-and-translate. Uses OpenAI (default) or Gemini, preserves Markdown structure and URLs, corrects auto-transcription errors, runs files in parallel, and skips files already written in the target writing-script.
 argument-hint: <file-or-dir> --to <language> [--provider openai|gemini] [--model M] [--out-dir DIR]
 allowed-tools: Bash, Read, Write, Edit

@@ -195,9 +195,20 @@ def translate_text(provider, text, system, depth=0):
 # --------------------------------------------------------------------------- #
 
 _HTML_SKIP_TAGS = {"code", "pre", "script", "style"}
+# `span` is included so e.g. `<figcaption><span class="caption-text">...</span>
+# <a class="ts-chip">0:00</a></figcaption>` translates the caption text.
+# `figcaption` itself yields no text in that layout (its direct children are
+# both elements, not strings). `a` text is translated except for stock anchor
+# labels (`_STOCK_LINK_TEXTS`) and elements like the `.ts-chip` whose content
+# is a pure timestamp (filtered by the numeric-content check at extraction).
 _HTML_TEXT_TAGS = {"p", "li", "h1", "h2", "h3", "h4", "h5", "h6",
-                   "figcaption", "title", "blockquote", "em", "strong", "a"}
+                   "figcaption", "title", "blockquote", "em", "strong",
+                   "a", "span"}
 _STOCK_LINK_TEXTS = {"▶ Watch on YouTube"}
+# Skip translating elements whose visible text is purely numeric/punctuation
+# (no letters in any script). Used to keep timestamp chips and similar
+# pure-data labels intact across the translation pass.
+_NUMERIC_RE = re.compile(r"^[\s\d:./\-,▶•]+$")
 
 
 def _extract_html_nodes(html_text):
@@ -229,7 +240,8 @@ def _extract_html_nodes(html_text):
                     if child.name in _HTML_SKIP_TAGS:
                         parts.append("")
             text = "".join(parts).strip()
-            if text and text not in _STOCK_LINK_TEXTS:
+            if (text and text not in _STOCK_LINK_TEXTS
+                    and not _NUMERIC_RE.match(text)):
                 el["data-tr-id"] = str(nid)
                 nodes.append({"id": nid, "kind": el.name, "text": text})
                 nid += 1
@@ -340,7 +352,8 @@ def _translate_html(html_text, target, provider="openai", model=None,
                     if child.name in _HTML_SKIP_TAGS:
                         parts.append("")
             text = "".join(parts).strip()
-            if text and text not in _STOCK_LINK_TEXTS:
+            if (text and text not in _STOCK_LINK_TEXTS
+                    and not _NUMERIC_RE.match(text)):
                 el["data-tr-id"] = str(nid)
                 nodes.append({"id": nid, "kind": el.name, "text": text})
                 nid += 1
