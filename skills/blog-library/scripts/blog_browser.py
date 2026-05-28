@@ -160,7 +160,19 @@ _SPA = r"""<!DOCTYPE html>
     background:var(--surface-container-low);
     border-right:1px solid var(--outline-variant);
     display:flex; flex-direction:column; height:100%;
+    transition:width .18s ease, min-width .18s ease;
+    overflow:hidden;
   }
+  /* Collapsed: slide the whole sidebar out; the topbar toggle brings it back. */
+  body.sb-collapsed .sidebar {
+    width:0; min-width:0; border-right:0;
+  }
+  .sb-toggle {
+    flex:none; cursor:pointer; border:0; background:transparent;
+    font-size:17px; line-height:1; color:var(--on-surface-variant);
+    padding:5px 9px; border-radius:8px; font-family:inherit;
+  }
+  .sb-toggle:hover { background:var(--surface-container); }
   .sb-head { padding:18px 18px 10px; }
   .brand {
     font-weight:800; font-size:12px; letter-spacing:.16em; text-transform:uppercase;
@@ -222,6 +234,7 @@ _SPA = r"""<!DOCTYPE html>
   </aside>
   <main class="main">
     <div class="topbar">
+      <button class="sb-toggle" id="sbToggle" title="Hide sidebar (⌘\)" aria-label="Toggle sidebar">⟨</button>
       <span class="crumb" id="crumb">Select a blog from the left</span>
       <a class="open-raw hidden" id="openRaw" target="_blank" rel="noopener">Open in new tab ↗</a>
     </div>
@@ -235,7 +248,25 @@ const viewer = document.getElementById('viewer');
 const emptyEl = document.getElementById('empty');
 const crumbEl = document.getElementById('crumb');
 const openRaw = document.getElementById('openRaw');
+const sbToggle = document.getElementById('sbToggle');
 let activeRow = null;
+
+// ---- Sidebar collapse (persisted; ⌘\ / Ctrl-\ like Obsidian) ----
+function setCollapsed(c){
+  document.body.classList.toggle('sb-collapsed', c);
+  sbToggle.textContent = c ? '☰' : '⟨';
+  sbToggle.title = (c ? 'Show' : 'Hide') + ' sidebar (⌘\\)';
+  try { localStorage.setItem('sbCollapsed', c ? '1' : '0'); } catch(e){}
+}
+sbToggle.addEventListener('click', ()=>
+  setCollapsed(!document.body.classList.contains('sb-collapsed')));
+window.addEventListener('keydown', e=>{
+  if((e.metaKey||e.ctrlKey) && e.key==='\\'){
+    e.preventDefault();
+    setCollapsed(!document.body.classList.contains('sb-collapsed'));
+  }
+});
+try { setCollapsed(localStorage.getItem('sbCollapsed')==='1'); } catch(e){}
 
 function countFiles(nodes){
   let n=0; for(const x of nodes){ if(x.type==='file') n++; else n+=countFiles(x.children||[]); } return n;
