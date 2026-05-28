@@ -152,6 +152,20 @@ def _download_video(url, work_dir):
     return out
 
 
+def _video_height(video_path):
+    """Return the video's pixel height (or None if ffprobe fails)."""
+    res = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=height", "-of",
+         "default=noprint_wrappers=1:nokey=1", video_path],
+        capture_output=True, text=True,
+    )
+    try:
+        return int(res.stdout.strip().splitlines()[0])
+    except (ValueError, IndexError):
+        return None
+
+
 def _parse_markdown_body(md_path):
     """Return list of body paragraphs (skipping H1 and source link)."""
     paragraphs = []
@@ -203,6 +217,16 @@ def process_one(url, args):
         video_path = os.path.join(work_dir, "video.mp4")
         if not (resumed and os.path.exists(video_path) and os.path.getsize(video_path) > 1_000_000):
             video_path = _download_video(url, work_dir)
+        # Surface low-res input instead of silently embedding blurry frames.
+        # The usual cause is an outdated yt-dlp that YouTube's SABR streaming
+        # blocks from fetching adaptive (>360p) formats — `brew upgrade yt-dlp`
+        # / `pip install -U yt-dlp` typically restores 1080p.
+        video_height = _video_height(video_path)
+        if video_height is not None and video_height < 720:
+            print(f"!! WARNING: source video is only {video_height}p — frames "
+                  f"will be low quality. Your yt-dlp may be outdated (YouTube "
+                  f"SABR blocks >360p on old versions); try updating it.",
+                  flush=True)
         frames_dir = os.path.join(work_dir, "frames")
         pairs = fe.extract_uniform_frames(
             video_path, frames_dir, interval_s=args.sample_interval,
@@ -257,6 +281,7 @@ def process_one(url, args):
             "frames_candidates": len(pairs),
             "frames_after_dedup": len(survivors),
             "frames_final": len(kept),
+            "video_height": video_height,
             "output": out_html,
             "elapsed_s": round(time.time() - started, 1),
             "degraded": any(r.get("degraded") for r in ranked),
